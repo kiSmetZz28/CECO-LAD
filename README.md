@@ -12,7 +12,7 @@ Artificial intelligence (AI)-driven Log Anomaly Detection (LAD) is a critical co
 - Ubuntu 20.04
 - NVIDIA driver 460.73.01
 - CUDA 11.2
-- Python 3.8
+- Python 3.10
 - PyTorch 
 
 ## Installation
@@ -31,5 +31,30 @@ CECO-LAD and other baseline methods are implemented on [HDFS](https://github.com
 
 # Experiment
 
+## Edge-based Q-BAT
+
+Here we use [ExecuTorch](https://docs.pytorch.org/executorch/0.4/) (version 0.4) for quantization and lower the model for Q-BAT at the edge.
+
+According to the guideline of ExecuTorch, clone and install the ExecuTorch locally.
+
+```bash
+git clone -b release/0.4 https://github.com/pytorch/executorch.git
+```
+
+## Demo
+We provide the experiment scripts of all benchmarks under the folder ./scripts. You can reproduce the experiment results as follows:
+
+```bash
+bash ./scripts/run.sh
+```
+
+or you can directly run the command in the python console:
+
+```bash
+# BAT training
+python ensemble_train.py
+
+python test.py
+```
 
 
