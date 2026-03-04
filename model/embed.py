@@ -39,21 +39,6 @@ class TokenEmbedding(nn.Module):
         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
-# class TokenEmbedding(nn.Module):
-#     def __init__(self, c_in, d_model):
-#         super(TokenEmbedding, self).__init__()
-#         self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
-#                                    kernel_size=3, padding=0, bias=False)
-#         for m in self.modules():
-#             if isinstance(m, nn.Conv1d):
-#                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
-
-#     def forward(self, x):
-#         # Apply circular padding manually
-#         x = F.pad(x.permute(0, 2, 1), (1, 1), mode='circular').transpose(1, 2)
-#         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
-#         return x
-
 
 class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, dropout=0.0):
