@@ -261,81 +261,16 @@ class Solver(object):
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
         train_energy = np.array(attens_energy)
 
-        # np.savetxt("./bgl_energy/train_energy/" + fileparam + ".csv", train_energy, fmt="%.18e")
 
-        # (2) find the threshold
-        attens_energy = []
-        for i, (input_data, labels) in enumerate(self.thre_loader):
-            input = input_data.float().to(self.device)
-            output, series, prior, _ = self.model(input)
 
-            loss = torch.mean(criterion(input, output), dim=-1)
-
-            series_loss = 0.0
-            prior_loss = 0.0
-            for u in range(len(prior)):
-                if u == 0:
-                    series_loss = my_kl_loss(series[u], (
-                            prior[u] / torch.unsqueeze(torch.sum(prior[u], dim=-1), dim=-1).repeat(1, 1, 1,
-                                                                                                   self.win_size)).detach()) * temperature
-                    prior_loss = my_kl_loss(
-                        (prior[u] / torch.unsqueeze(torch.sum(prior[u], dim=-1), dim=-1).repeat(1, 1, 1,
-                                                                                                self.win_size)),
-                        series[u].detach()) * temperature
-                else:
-                    series_loss += my_kl_loss(series[u], (
-                            prior[u] / torch.unsqueeze(torch.sum(prior[u], dim=-1), dim=-1).repeat(1, 1, 1,
-                                                                                                   self.win_size)).detach()) * temperature
-                    prior_loss += my_kl_loss(
-                        (prior[u] / torch.unsqueeze(torch.sum(prior[u], dim=-1), dim=-1).repeat(1, 1, 1,
-                                                                                                self.win_size)),
-                        series[u].detach()) * temperature
-            # Metric
-            metric = torch.softmax((-series_loss - prior_loss), dim=-1)
-            cri = metric * loss
-            cri = cri.detach().cpu().numpy()
-            attens_energy.append(cri)
-
-        attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
-        test_energy = np.array(attens_energy)
-        combined_energy = np.concatenate([train_energy, test_energy], axis=0)
-
-        # np.savetxt("./hdfs_energy/train_energy_" + str(self.dataset) + '_' + fileparam + ".txt", train_energy, fmt="%.18e")
-        # np.savetxt("./hdfs_energy/thresh_energy_" + str(self.dataset) + '_' + fileparam + ".txt", combined_energy, fmt="%.18e")
-
-        # directly use train data for threshold
-        thresh = np.percentile(combined_energy, 100 - self.anormly_ratio)
-        logging.info(f"Threshold : {thresh}")
-
-        # (3) evaluation on the test set
+        # Evaluation on the test set
         test_labels = []
         attens_energy = []
 
-        # file_path = "HDFS_test_data_w50_len10_sample.txt"
-        # label_path = "HDFS_label_w50_len10_sample.txt"
-        # file_path = "OS_test_data_w100_len10_sample.txt"
-        # label_path = "OS_label_w100_len10_sample.txt"
-
-        # file_test = "test_data_hdfsw50b32l2.txt"
-        # file_label = "label_data_hdfsw50b32l2.txt"
-
-        # Open file for appending
-        # with open(file_path, 'w') as file:
-        #     with open(label_path, 'w') as file_l:
         for i, (input_data, labels) in enumerate(self.test_loader):
-            # save_input = input_data.numpy().copy()
-            # for j in range(save_input.shape[0]):
-            #     np.savetxt(file, save_input[j], delimiter=' ', fmt='%.6f')
-
-            # save_label = labels.numpy().copy()
-            # np.savetxt(file_l, save_label, fmt='%d')
 
             input = input_data.float().to(self.device)
-            # logging.info(input.shape)
             output, series, prior, _ = self.model(input)
-            # logging.info("output shape", output.shape)
-            # logging.info("series shape", series[0].shape)
-            # logging.info("prior shape", prior[0].shape)
 
             loss = torch.mean(criterion(input, output), dim=-1)
 
@@ -370,8 +305,6 @@ class Solver(object):
         test_energy = np.array(attens_energy)
         test_labels = np.array(test_labels)
 
-        # np.savetxt("./bgl_energy/test_energy/" + fileparam + ".csv", test_energy, fmt="%.18e")
-        # np.savetxt("./bgl_energy/test_label_" + str(self.dataset) + '_' + fileparam + ".txt", test_labels, fmt="%d")
 
         pred = (test_energy > thresh).astype(int)
 
@@ -380,7 +313,6 @@ class Solver(object):
         logging.info(f"pred:   {pred.shape}")
         logging.info(f"gt:     {gt.shape}")
 
-        # detection adjustment: please see this issue for more information https://github.com/thuml/Anomaly-Transformer/issues/14
         anomaly_state = False
         for i in range(len(gt)):
             if gt[i] == 1 and pred[i] == 1 and not anomaly_state:
