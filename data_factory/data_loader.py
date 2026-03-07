@@ -124,8 +124,6 @@ class BGLSegLoader(object):
 
     def __init__(self, ensemble_param, data_path, win_size, step, data_seq_len, mode="train"):
 
-        # print(step)
-
         self.mode = mode
         self.step = step
         self.win_size = win_size
@@ -137,16 +135,14 @@ class BGLSegLoader(object):
             timeout=float('inf'),  # Do not include a maximum allowed time between events
         )
 
-        path_train = data_path + '/82/bgl_train_82.txt'
-        path_test_abnormal = data_path + '/82/bgl_test_abnormal_82.txt'
-        path_test_normal = data_path + '/82/bgl_test_normal_82.txt'
+        path_train = data_path + '/bgl_train.txt'
+        path_test_abnormal = data_path + '/bgl_test_abnormal.txt'
+        path_test_normal = data_path + '/bgl_test_normal.txt'
 
         # Load data from BGL dataset
-        X_train, y_train, label_train, mapping_train = preprocessor.text(path_train, verbose=True)
-        X_test, y_test, label_test, mapping_test = preprocessor.text(path_test_normal, verbose=True)
-        X_test_anomaly, y_test_anomaly, label_test_anomaly, mapping_test_anomaly = preprocessor.text(path_test_abnormal,
-                                                                                                     verbose=True)
-        # X_test_together, y_test_together, label_test_together, mapping_test_together = preprocessor.text(path_test_together, verbose=True)
+        X_train, _, _, _ = preprocessor.text(path_train, verbose=True)
+        X_test, _, _, _ = preprocessor.text(path_test_normal, verbose=True)
+        X_test_anomaly, _, _, _ = preprocessor.text(path_test_abnormal, verbose=True)
 
         data = X_train.numpy()
         self.scaler.fit(data)
@@ -154,27 +150,21 @@ class BGLSegLoader(object):
 
         if self.mode == "train":
             # Bootstrap sample
-            random_number = get_random_state('./bat_config/ensemble_train_bgl_config.yaml', ensemble_param[0], ensemble_param[1], ensemble_param[2], ensemble_param[3])
+            random_number = get_random_state('./model_config/bat_config/ensemble_train_bgl_config.yaml', ensemble_param[0], ensemble_param[1], ensemble_param[2], ensemble_param[3])
             data, _ = resample(data, data, replace=True, n_samples=len(data), random_state=random_number)
 
         test_normal = X_test
         test_abnormal = X_test_anomaly
         test_data = np.concatenate((test_normal, test_abnormal), axis=0)
-
-        # test_data = X_test_together.numpy()
-
-        # load_to_file = test_data.astype(int)
-        # np.savetxt("hdfs_test_data_transform.csv", load_to_file, fmt='%i', delimiter = ",")
-
         self.test = self.scaler.transform(test_data)
 
         self.train = data
         self.val = self.test
 
+        # set ground truth for testing
         test_normal_labels = np.full([len(test_normal), 1], 0, dtype=int)
         test_abnormal_labels = np.full([len(test_abnormal), 1], 1, dtype=int)
         self.test_labels = np.concatenate((test_normal_labels, test_abnormal_labels), axis=None)
-        # self.test_labels = np.full(test_data.shape[0], 1, dtype = int)
 
         logging.info(f"test data shape: {self.test.shape}")
         logging.info(f"train data shape: {self.train.shape}")

@@ -31,19 +31,19 @@ def main(config):
 
 if __name__ == '__main__':
     # Set up logging to file
-    log_filename = f'ensemble_train_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+    log_filename = f'BAT_train_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_filename),
-            logging.StreamHandler()  # Optional: keeps logging.infoing to console too
+            logging.StreamHandler()
         ]
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='ensemble_train_hdfs_config.yaml', help='Path to config file')
+    parser.add_argument('--config', type=str, default='./model_config/bat_config/ensemble_train_bgl_config.yaml', help='Path to config file')
     args, _ = parser.parse_known_args()
 
     yaml_config = load_config(args.config)
