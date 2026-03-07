@@ -70,7 +70,7 @@ if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
 
     log_filename = (
-        f'ensemble_test_parallel_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+        f'BAT_test_parallel_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
     )
 
     logging.basicConfig(

@@ -47,7 +47,7 @@ def main(config):
 
 if __name__ == '__main__':
     # Set up logging to file
-    log_filename = f'ensemble_test_sequence_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+    log_filename = f'BAT_test_sequence_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
     logging.basicConfig(
         level=logging.INFO,
@@ -106,7 +106,6 @@ if __name__ == '__main__':
 
         # each step of ensemble results (ensemble process)
         ensemble_process = np.concatenate(prediction_results, axis=1)
-        logging.info(ensemble_process.shape)
 
         logging.info(f"===================={args.voting} voting for ensemble step {i + 1}======================")
         if i + 1 < 3 and (args.voting == 'majority' or args.voting == 'all'):
