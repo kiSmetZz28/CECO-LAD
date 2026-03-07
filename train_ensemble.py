@@ -62,6 +62,11 @@ if __name__ == '__main__':
         for key, val in zip(search_keys, values):
             config_dict[key] = val
 
+        fileparam = f"e{config_dict['num_epochs']}_k{config_dict['k']}_l{config_dict['e_layer_num']}_b{config_dict['batch_size']}"
+        model_name = f"{config_dict['dataset']}_{fileparam}_checkpoint.pth"
+        model_path = os.path.join(config_dict['model_save_path'], model_name)
+        logging.info(f"model_path: {model_path}")
+
         config = argparse.Namespace(**config_dict)
 
         logging.info(f"\n=== Training model {i + 1}/{len(combinations)} ===")
