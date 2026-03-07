@@ -285,6 +285,7 @@ class Solver(object):
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
         train_energy = np.array(attens_energy)
 
+        # EM-GMM thresholding on the training set
         em_pred = set_thresh_em(train_energy.reshape(-1, 1), 7, 'tied', 100, 'k-means++', 10)
         train_pred = get_anomaly_ratio(em_pred)
         normal_ratio = train_pred[0][1]
@@ -385,10 +386,8 @@ class Solver(object):
         from sklearn.metrics import precision_recall_fscore_support
         from sklearn.metrics import accuracy_score
         accuracy = accuracy_score(gt, pred)
-        precision, recall, f_score, support = precision_recall_fscore_support(gt, pred,
-                                                                              average='binary')
+        precision, recall, f_score, support = precision_recall_fscore_support(gt, pred, average='binary')
         logging.info(
-            "Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(
-                accuracy, precision, recall, f_score))
+            "Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(accuracy, precision, recall, f_score))
 
         return accuracy, precision, recall, f_score

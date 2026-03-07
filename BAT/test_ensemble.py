@@ -7,7 +7,6 @@ from utils.utils import *
 from solver_ensemble import Solver
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import accuracy_score
-import sys
 import logging
 import datetime
 
@@ -19,9 +18,8 @@ def load_config(config_path):
 
 def performance(gt, pred):
     accuracy = accuracy_score(gt, pred)
-    precision, recall, f_score, support = precision_recall_fscore_support(gt, pred,
-                                                                          average='binary')
-    logging.info("Accuracy : {:0.8f}, Precision : {:0.8f}, Recall : {:0.8f}, F-score : {:0.8f} ".format(
+    precision, recall, f_score, support = precision_recall_fscore_support(gt, pred, average='binary')
+    logging.info("Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(
         accuracy, precision, recall, f_score))
 
 
@@ -49,19 +47,19 @@ def main(config):
 
 if __name__ == '__main__':
     # Set up logging to file
-    log_filename = f'ensemble_test_bgl_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+    log_filename = f'ensemble_test_sequence_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_filename),
-            logging.StreamHandler()  # Optional: keeps logging.infoing to console too
+            logging.StreamHandler()
         ]
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='ensemble_test_bgl_config.yaml', help='Path to config file')
+    parser.add_argument('--config', type=str, default='./model_config/bat_config/ensemble_test_bgl_config.yaml', help='Path to config file')
     parser.add_argument('--voting', type=str, default='all',
                         choices=['all', 'majority', 'at least one', 'consensus'],
                         help='Voting method for ensemble')
@@ -81,6 +79,7 @@ if __name__ == '__main__':
     ground_truth = None
     prediction_results = []
 
+    # BAT model testing by prediction in sequence
     for i, values in enumerate(combinations):
         config_dict = base_config.copy()
         for key, val in zip(search_keys, values):
@@ -91,7 +90,7 @@ if __name__ == '__main__':
         logging.info(f"\n=== Testing model {i + 1}/{len(combinations)} ===")
         for k, v in vars(config).items():
             logging.info(f"{k}: {v}")
-        logging.info('----------------------------------')
+        logging.info('--------------------------------------------------')
 
         # single model prediction
         pred, gt = main(config)
@@ -123,7 +122,6 @@ if __name__ == '__main__':
 
     # final results for ensemble
     prediction_results = np.concatenate(prediction_results, axis=1)
-    logging.info(prediction_results.shape)
 
     logging.info(f"===================={args.voting} voting for ensemble all models======================")
     if args.voting == 'all':
