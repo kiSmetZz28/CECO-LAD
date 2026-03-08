@@ -105,6 +105,8 @@ After downloading and setting up the executorch, we need to customize the execut
 
 ### Model Inference
 
+To save time, the preprocessed datasets for executing at the edge can be downloaded from the [Google Drive](https://drive.google.com/drive/folders/1pBNMsucvw1eypn5gC_QvOzeRnMgTzLq2?usp=drive_link).
+
 To execute the Q-BAT model, run the scripts:
 
 ```
