@@ -1,6 +1,7 @@
 import os
 import argparse
-
+import logging
+import datetime
 from torch.backends import cudnn
 from utils.utils import *
 
@@ -20,13 +21,24 @@ def main(config):
     if config.mode == 'train':
         solver.train()
     elif config.mode == 'test':
-        print("test")
         solver.test()
 
     return solver
 
 
 if __name__ == '__main__':
+    # Set up logging to file
+    log_filename = f'EM-AT_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler()
+        ]
+    )
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--lr', type=float, default=1e-4)
@@ -47,9 +59,24 @@ if __name__ == '__main__':
 
     config = parser.parse_args()
 
+    fileparam = (
+        f"e{config.num_epochs}_"
+        f"k{config.k}_"
+        f"l{config.e_layer_num}_"
+        f"b{config.batch_size}"
+    )
+    model_name = f"{config.dataset}_{fileparam}_checkpoint.pth"
+    
+    # update model_save_path to a unique folder for this model
+    config.model_save_path = os.path.join(
+        config.model_save_path, model_name
+    )
+
+    logging.info(f"model_save_path: {config.model_save_path}")
+
     args = vars(config)
-    print('------------ Options -------------')
+    logging.info('------------ Options -------------')
     for k, v in sorted(args.items()):
-        print('%s: %s' % (str(k), str(v)))
-    print('-------------- End ----------------')
+        logging.info("%s: %s", k, v)
+    logging.info('-------------- End ----------------')
     main(config)

@@ -239,6 +239,7 @@ class Solver(object):
             adjust_learning_rate(self.optimizer, epoch + 1, self.lr)
 
     def singlemodelpred(self):
+        # get the model checkpoint path
         fileparam = f'e{self.num_epochs}_k{self.k}_l{self.e_layer_num}_b{self.batch_size}'
         self.model.load_state_dict(
             torch.load(
@@ -377,7 +378,7 @@ class Solver(object):
 
 
     def test(self):
-        logging.info("======================TEST MODE ENSEMBLE======================")
+        logging.info("======================TEST MODE======================")
 
         pred, gt = self.singlemodelpred()
 

@@ -56,10 +56,10 @@ For BAT, it is bagging based ensemble, we use 81 base models for bagging in CECO
 
 ```
 # To train BAT model
-python ./BAT/train_ensemble.py
+python train_ensemble.py
 
 # To test BAT model
-python ./BAT/test_ensemble.py --voting majority
+python test_ensemble.py --voting majority
 
 ```
 
