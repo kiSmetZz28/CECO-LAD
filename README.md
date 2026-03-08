@@ -50,7 +50,7 @@ CECO-LAD and other baseline methods are implemented on [HDFS](https://github.com
 
 ## Download Trained Model
 
-The trained BAT and Q-BAT models can be downloaded from the [Google Drive](https://drive.google.com/drive/folders/1dh_pSu5M7fZVIWpdwfyBa4OLC4MKO1N0?usp=drive_link).
+The trained BAT models can be downloaded from the [Google Drive](https://drive.google.com/drive/folders/1dh_pSu5M7fZVIWpdwfyBa4OLC4MKO1N0?usp=drive_link). The trained Q-BAT models are included in the ./Edge/executorch/checkpoints.
 
 # Experiment
 
