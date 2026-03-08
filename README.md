@@ -58,13 +58,12 @@ The trained BAT and Q-BAT models can be downloaded from the [Google Drive](https
 
 For BAT, it is bagging based ensemble, we use 81 base models for bagging in CECO-LAD. To ensure robustness, we use four parameters:num_epochs, k (loss weight), e_layer_num (number of encoder layer), and batch_size. The detailed configs for BAT are provided in ./model_config/bat_config.
 
-```
+```bash
 # To train BAT model
 python train_ensemble.py
 
 # To test BAT model
 python test_ensemble.py --voting majority
-
 ```
 
 ## Edge-based Q-BAT
@@ -74,6 +73,8 @@ Here we use [ExecuTorch](https://docs.pytorch.org/executorch/0.3/) (version 0.3)
 According to the guideline of ExecuTorch, clone and install ExecuTorch locally.
 
 ```bash
+cd Edge
+
 git clone --branch v0.3.0 https://github.com/pytorch/executorch.git
 cd executorch
 
@@ -93,15 +94,26 @@ git submodule update --init
 cmake --build cmake-out --target executor_runner -j9
 ```
 
+### Runner Customize
+
+After downloading and setting up the executorch, we need to customize the executor_runner to enable the customized input data.
+
+By replacing the executor_runner.cpp in the folder ./executorch/examples/portable/executor_runner to enable user customized runner.
+
+Then build the the executor_runner target again:
+
+```bash
+# Build the executor_runner target
+cmake --build cmake-out --target executor_runner -j9
+```
+
 ### Model conversion
 
 For Q-BAT model, we utilize executorch and torchao for edge optimization and quantization. To quantize the model and convert from .pth to .pte file, please run the following:
 
-```
+```bash
 python convert_model.py
 ```
-
-After downloading and setting up the executorch, we need to customize the executor_runner to enable the custormized input data.
 
 ### Model Inference
 
@@ -109,8 +121,8 @@ To save time, the preprocessed datasets for executing at the edge can be downloa
 
 To execute the Q-BAT model, run the scripts:
 
-```
-./execute_qbat.sh
+```bash
+./edge_scripts/edge_execute.sh
 ```
 
 ## Demo
