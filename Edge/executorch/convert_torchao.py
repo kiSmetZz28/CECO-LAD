@@ -44,7 +44,7 @@ def convert(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--k', type=int, default=1)
+    parser.add_argument('--k', type=int, default=3)
     parser.add_argument('--num_epochs', type=int, default=3)
     parser.add_argument('--e_layer_num', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=32)

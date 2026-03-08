@@ -98,11 +98,9 @@ cmake --build cmake-out --target executor_runner -j9
 
 ### Runner Customize
 
-After downloading and setting up the executorch, we need to customize the executor_runner to enable the customized input data.
+After downloading and setting up the executorch, we need to customize the executor_runner to enable the customized input data. By replacing the executor_runner.cpp in the folder ./executorch/examples/portable/executor_runner to enable user customized runner. (We have already updated the file in the current version)
 
-By replacing the executor_runner.cpp in the folder ./executorch/examples/portable/executor_runner to enable user customized runner.
-
-Then build the the executor_runner target again:
+After updating the executor_runner file, build the the executor_runner target again:
 
 ```bash
 # Build the executor_runner target
@@ -114,14 +112,14 @@ cmake --build cmake-out --target executor_runner -j9
 For Q-BAT model, we utilize executorch and torchao for edge optimization and quantization. To quantize the model and convert from .pth to .pte file, please run the following:
 
 ```bash
-python convert_torchao.py --epoch 3 --k 3 --enlayer 3 --batch_size 32
+python convert_torchao.py
 ```
 
 ### Model Inference
 
 To save time, both the trained Q-BAT models and the preprocessed datasets for executing at the edge can be downloaded from the [Google Drive](https://drive.google.com/drive/folders/1pBNMsucvw1eypn5gC_QvOzeRnMgTzLq2?usp=drive_link).
 
-To execute the Q-BAT model, run the scripts:
+To execute the Q-BAT model accross all the datasets, run the scripts:
 
 ```bash
 ./edge_scripts/edge_execute.sh
@@ -139,7 +137,5 @@ or you can directly run the command in the python console:
 
 ```bash
 # BAT training
-python ensemble_train.py
 
-python test.py
 ```
