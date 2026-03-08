@@ -87,10 +87,10 @@ if __name__ == '__main__':
 
         config = argparse.Namespace(**config_dict)
 
-        logging.info(f"\n=== Testing model {i + 1}/{len(combinations)} ===")
+        logging.info("\n=== Testing model %d/%d ===", i + 1, len(combinations))
         for k, v in vars(config).items():
             logging.info(f"{k}: {v}")
-        logging.info('--------------------------------------------------')
+        logging.info('----------------------------------')
 
         # single model prediction
         pred, gt = main(config)
