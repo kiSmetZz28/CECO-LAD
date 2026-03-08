@@ -89,6 +89,14 @@ git submodule update --init
 cmake --build cmake-out --target executor_runner -j9
 ```
 
+### Model conversion
+
+### hh
+
+After downloading and setting up the executorch, we need to customize the executor_runner to enable the custormized input data.
+
+###
+
 ## Demo
 
 We provide the experiment scripts of all benchmarks under the folder ./scripts. You can reproduce the experiment results as follows:
