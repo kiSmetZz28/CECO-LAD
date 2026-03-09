@@ -70,7 +70,7 @@ python test_ensemble.py --voting majority
 
 ## Edge-based Q-BAT
 
-Here we use [ExecuTorch](https://docs.pytorch.org/executorch/0.3/) (version 0.3) for lowering the model for Q-BAT at the edge. We have already included the executorch in our project.
+Here we use [ExecuTorch](https://docs.pytorch.org/executorch/0.3/) (version 0.3) for lowering the model for Q-BAT at the edge. We have already included the executorch locally in our project.
 
 If you want to try by your self for the start, according to the guideline of ExecuTorch, you can clone and install ExecuTorch locally.
 
@@ -131,11 +131,4 @@ We provide the experiment scripts of all benchmarks under the folder ./scripts. 
 
 ```bash
 bash ./scripts/run.sh
-```
-
-or you can directly run the command in the python console:
-
-```bash
-# BAT training
-
 ```
