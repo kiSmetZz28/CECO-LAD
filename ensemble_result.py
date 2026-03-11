@@ -3,8 +3,6 @@ import os
 import argparse
 from sklearn.metrics import f1_score
 
-from executorch.extension.pybindings import portable_lib
-
 # Import torch after importing and using portable_lib to demonstrate that
 # portable_lib works without importing this first.
 import torch
