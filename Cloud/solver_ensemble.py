@@ -4,11 +4,13 @@ import torch.nn.functional as F
 import numpy as np
 import os
 import time
+import logging
+import datetime
+import yaml
+
 from utils.utils import *
 from model.EMAT import EMAT
 from data_factory.data_loader import get_loader_segment
-import logging
-import datetime
 from sklearn.mixture import GaussianMixture
 
 
@@ -123,6 +125,68 @@ class Solver(object):
         self.build_model()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.criterion = nn.MSELoss()
+
+    def _update_threshold_config(self, thresh):
+        """Update or append the EM threshold for this model into a YAML file.
+
+        The target file depends on the dataset:
+        - Openstack -> model_config/threshold_config/ensemble_config_os.yaml
+        - BGL       -> model_config/threshold_config/ensemble_config_bgl.yaml
+        - HDFS      -> model_config/threshold_config/ensemble_config_hdfs.yaml
+
+        If the file does not exist, it will be created with a single model entry.
+        If the model already exists, its threshold is updated; otherwise it is appended.
+        """
+
+        dataset_name = str(self.dataset).strip('"') if isinstance(self.dataset, str) else str(self.dataset)
+
+        if dataset_name == 'Openstack':
+            cfg_path = 'model_config/threshold_config/ensemble_config_os.yaml'
+            model_prefix = 'Openstack_'
+        elif dataset_name == 'BGL':
+            cfg_path = 'model_config/threshold_config/ensemble_config_bgl.yaml'
+            model_prefix = 'BGL_'
+        elif dataset_name == 'HDFS':
+            cfg_path = 'model_config/threshold_config/ensemble_config_hdfs.yaml'
+            model_prefix = ''
+        else:
+            logging.warning(f"No threshold config mapping for dataset '{dataset_name}', skip writing threshold.")
+            return
+
+        # Build model name, consistent with checkpoint naming
+        fileparam = f"e{self.num_epochs}_k{self.k}_l{self.e_layer_num}_b{self.batch_size}"
+        model_name = f"{model_prefix}{fileparam}" if model_prefix else fileparam
+
+        cfg_data = {}
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, 'r') as f:
+                    loaded = yaml.safe_load(f)
+                    if isinstance(loaded, dict):
+                        cfg_data = loaded
+            except Exception as exc:
+                logging.warning(f"Failed to load existing threshold config '{cfg_path}': {exc}. Overwriting.")
+
+        models = cfg_data.get('models', []) if isinstance(cfg_data.get('models', []), list) else []
+
+        found = False
+        for m in models:
+            if m.get('name') == model_name:
+                m['threshold'] = float(thresh)
+                found = True
+                break
+
+        if not found:
+            models.append({'name': model_name, 'threshold': float(thresh)})
+
+        cfg_data['models'] = models
+
+        try:
+            with open(cfg_path, 'w') as f:
+                yaml.safe_dump(cfg_data, f, sort_keys=False)
+            logging.info(f"Saved threshold {thresh} for model '{model_name}' into '{cfg_path}'.")
+        except Exception as exc:
+            logging.warning(f"Failed to write threshold config '{cfg_path}': {exc}")
 
     def build_model(self):
         self.model = EMAT(win_size=self.win_size, enc_in=self.input_c, c_out=self.output_c, e_layers=self.e_layer_num)
@@ -302,6 +366,9 @@ class Solver(object):
         # use train_energy to get the anomaly score, also need to use EM here.
         thresh = np.percentile(train_energy, normal_ratio) 
         logging.info(f"Threshold : {thresh}")
+
+        # Save / update this threshold into the per-dataset threshold config YAML
+        self._update_threshold_config(thresh)
 
         # Evaluation on the test set
         test_labels = []
