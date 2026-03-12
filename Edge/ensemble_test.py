@@ -34,8 +34,8 @@ def evaluate(gt: np.ndarray, pred: np.ndarray, prefix: str = "") -> None:
     )
     label = f"[{prefix}] " if prefix else ""
     print(
-        f"{label}Accuracy : {accuracy:0.4f}, Precision : {precision:0.4f}, "
-        f"Recall : {recall:0.4f}, F-score : {f_score:0.4f}"
+        f"{label}Accuracy : {accuracy:0.6f}, Precision : {precision:0.6f}, "
+        f"Recall : {recall:0.6f}, F-score : {f_score:0.6f}"
     )
 
 
