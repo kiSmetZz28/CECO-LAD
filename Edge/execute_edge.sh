@@ -5,23 +5,23 @@ set -euo pipefail
 # All three datasets (os, bgl, hdfs) share the same
 # stages; os is the reference example.
 #
-# Usage (from repo root):
-#   bash scripts/execute_edge.sh [DATASET] [STAGE]
+# Usage (from repo root or Edge/):
+#   bash Edge/execute_edge.sh [DATASET] [STAGE]
 #
 # Defaults:
 #   DATASET: os
 #   STAGE:   all
 #
 # DATASET: os | bgl | hdfs
-# STAGE:   scores | thresh | predict | routing | hybrid | all
+# STAGE:   scores | thresh | predict | routing | hybrid | all | cloud
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDGE_DIR="${ROOT_DIR}/Edge"
 
 usage() {
-  echo "Usage: bash scripts/execute_edge.sh [DATASET] [STAGE]" >&2
+  echo "Usage: bash Edge/execute_edge.sh [DATASET] [STAGE]" >&2
   echo "  DATASET: os | bgl | hdfs (default: os)" >&2
-  echo "  STAGE: scores | thresh | predict | routing | hybrid | all (default: all)" >&2
+  echo "  STAGE: scores | thresh | predict | routing | hybrid | all | cloud (default: all)" >&2
 }
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
@@ -67,6 +67,15 @@ case "${STAGE}" in
   hybrid)
     echo "[execute_edge] ${DATASET}: hybrid evaluation (hybrid.sh; os example)"
     bash edge_scripts/hybrid.sh
+    ;;
+  cloud)
+    if [[ "${DATASET}" != "os" ]]; then
+      echo "[execute_edge] STAGE 'cloud' is only supported for DATASET=os" >&2
+      usage
+      exit 1
+    fi
+    echo "[execute_edge] os: full Edge↔Cloud pipeline via scripts/execute_os_edge_cloud.sh"
+    bash "${ROOT_DIR}/scripts/execute_os_edge_cloud.sh"
     ;;
   all)
     echo "[execute_edge] ${DATASET}: scores -> thresh -> predict -> routing -> hybrid"
