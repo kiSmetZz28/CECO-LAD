@@ -107,8 +107,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Optional path to ground-truth label file (0/1 per line). "
-            "If provided, anomaly segment smoothing identical to Solver.singlemodelpred "
-            "will be applied using these labels before saving predictions."
         ),
     )
 

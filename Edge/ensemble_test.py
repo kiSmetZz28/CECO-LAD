@@ -4,11 +4,6 @@ from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
 
 def evaluate(gt: np.ndarray, pred: np.ndarray, prefix: str = "") -> None:
-    """Smooth predictions with labels, then compute and print metrics.
-
-    This inlines the anomaly-segment smoothing logic (Solver.singlemodelpred)
-    and always evaluates on the smoothed predictions.
-    """
     preds = pred.astype(int).copy()
     gt = gt.astype(int)
 
@@ -39,7 +34,7 @@ def evaluate(gt: np.ndarray, pred: np.ndarray, prefix: str = "") -> None:
     )
     label = f"[{prefix}] " if prefix else ""
     print(
-        f"{label}(Smoothed) Accuracy : {accuracy:0.4f}, Precision : {precision:0.4f}, "
+        f"{label}Accuracy : {accuracy:0.4f}, Precision : {precision:0.4f}, "
         f"Recall : {recall:0.4f}, F-score : {f_score:0.4f}"
     )
 
@@ -71,7 +66,6 @@ def compute_edge_ensemble(edge_pred_files, label_file):
     print("Edge ensemble pred shape:", edge_raw.shape)
     print("GT shape:", gt.shape)
 
-    # evaluate (includes smoothing inside)
     evaluate(gt, edge_raw, prefix="Edge")
 
     return edge_raw, gt
@@ -83,7 +77,7 @@ def compute_hybrid(edge_raw: np.ndarray, cloud_pred_file: str, indices_file: str
     Parameters
     ----------
     edge_raw : np.ndarray
-        Raw edge ensemble predictions (no smoothing).
+        Raw edge ensemble predictions.
     cloud_pred_file : str
         Path to cloud predictions for selected indices.
     indices_file : str
@@ -115,7 +109,6 @@ def compute_hybrid(edge_raw: np.ndarray, cloud_pred_file: str, indices_file: str
     hybrid_raw = edge_raw.copy()
     hybrid_raw[indices] = cloud_pred
 
-    # evaluate (includes smoothing inside)
     evaluate(gt, hybrid_raw, prefix="Hybrid")
 
     return hybrid_raw
@@ -123,7 +116,7 @@ def compute_hybrid(edge_raw: np.ndarray, cloud_pred_file: str, indices_file: str
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compute edge ensemble and hybrid (edge+cloud) results with smoothing."
+        description="Compute edge ensemble and hybrid (edge+cloud) evaluation results."
     )
     parser.add_argument(
         "--edge_preds",
