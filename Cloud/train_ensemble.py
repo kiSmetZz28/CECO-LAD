@@ -1,32 +1,33 @@
 import os
 import time
 import argparse
-import yaml
-from itertools import product
-from torch.backends import cudnn
-from utils.utils import *
-from solver_ensemble import Solver
-import sys
-import logging
 import datetime
+import logging
+from itertools import product
+
+import yaml
+from torch.backends import cudnn
+
+from solver_ensemble import Solver
+from utils.utils import *
 
 
 def load_config(config_path):
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+	with open(config_path, 'r') as f:
+		return yaml.safe_load(f)
 
 
 def main(config):
-    cudnn.benchmark = True
-    if not os.path.exists(config.model_save_path):
-        mkdir(config.model_save_path)
-    solver = Solver(vars(config))
+	cudnn.benchmark = True
+	if not os.path.exists(config.model_save_path):
+		mkdir(config.model_save_path)
+	solver = Solver(vars(config))
 
-    if config.mode == 'train':
-        solver.train()
-    elif config.mode == 'test':
-        solver.test()
-    return solver
+	if config.mode == 'train':
+		solver.train()
+	elif config.mode == 'test':
+		solver.test()
+	return solver
 
 
 if __name__ == '__main__':
@@ -34,16 +35,21 @@ if __name__ == '__main__':
     log_filename = f'BAT_train_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()
-        ]
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[
+                    logging.FileHandler(log_filename),
+                    logging.StreamHandler(),
+            ],
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./model_config/bat_config/ensemble_train_bgl_config.yaml', help='Path to config file')
+    parser.add_argument(
+            '--config',
+            type=str,
+            default='./model_config/bat_config/ensemble_train_bgl_config.yaml',
+            help='Path to config file',
+    )
     args, _ = parser.parse_known_args()
 
     yaml_config = load_config(args.config)
@@ -75,4 +81,6 @@ if __name__ == '__main__':
         main(config)
 
         end_train = time.time()
-        logging.info(f"Training time for {i + 1}/{len(combinations)} model: {end_train - start_train:.2f} seconds")
+        logging.info(
+                f"Training time for {i + 1}/{len(combinations)} model: {end_train - start_train:.2f} seconds",
+        )
