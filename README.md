@@ -168,3 +168,15 @@ Here is the screenshot of Q-BAT performance and CECO-LAD performance using the O
 <p align="center">
   <img src="pictures/openstack_results.png" width="700">
 </p>
+
+Here is the screenshot of Q-BAT performance and CECO-LAD performance using the HDFS dataset.
+
+<p align="center">
+  <img src="pictures/hdfs_results.png" width="700">
+</p>
+
+Here is the screenshot of Q-BAT performance and CECO-LAD performance using the BGL dataset.
+
+<p align="center">
+  <img src="pictures/bgl_results.png" width="700">
+</p>

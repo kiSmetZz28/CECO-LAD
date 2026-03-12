@@ -137,7 +137,6 @@ def select_indices_by_distance(
             raise ValueError("Invalid distance type. Use 'eu' or 'ma'.")
         all_distances.append((i, float(distance)))
 
-    # Sort by distance in descending order (farthest first)
     all_distances.sort(key=lambda x: x[1], reverse=True)
 
     num_select = int(len(all_distances) * tolerance)
