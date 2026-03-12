@@ -13,29 +13,34 @@ from sklearn.mixture import GaussianMixture
 
 
 def set_thresh_em(energy, n_components, covariance_type, max_iter, init_params, n_init):
-        gm = GaussianMixture(n_components=n_components, covariance_type=covariance_type, max_iter=max_iter, init_params=init_params, n_init=n_init, random_state=42).fit(energy)
-        pred = gm.predict(energy)
-        return pred
+    gm = GaussianMixture(
+                 n_components=n_components,
+                 covariance_type=covariance_type,
+                 max_iter=max_iter,
+                 init_params=init_params,
+                 n_init=n_init,
+                 random_state=42,
+        ).fit(energy)
+    pred = gm.predict(energy)
+    return pred
 
 
 def get_anomaly_ratio(em_pred):
+    unique, counts = np.unique(em_pred, return_counts=True)
+    total = len(em_pred)
 
-        unique, counts = np.unique(em_pred, return_counts=True)
-        total = len(em_pred)
+    # Create a dictionary: label -> percentage
+    label_percentages = {label: (count / total) * 100 for label, count in zip(unique, counts)}
 
-        # Create a dictionary: label -> percentage
-        label_percentages = {label: (count / total) * 100 for label, count in zip(unique, counts)}
+    # Sort by percentage descending
+    sorted_percentages = sorted(label_percentages.items(), key=lambda x: x[1], reverse=True)
 
-        # Sort by percentage descending
-        sorted_percentages = sorted(label_percentages.items(), key=lambda x: x[1], reverse=True)
+    # Log counts and percentages
+    logging.info(f"Label counts: {dict(zip(unique, counts))}")
+    for label, percentage in sorted_percentages:
+        logging.info(f"Label {label}: {percentage:.6f}%")
 
-        # Log counts and percentages
-        logging.info(f"Label counts: {dict(zip(unique, counts))}")
-        for label, percentage in sorted_percentages:
-                logging.info(f"Label {label}: {percentage:.6f}%")
-
-        return sorted_percentages
-
+    return sorted_percentages
 
 
 def my_kl_loss(p, q):
