@@ -173,7 +173,6 @@ def main():
     args = parse_args()
     print(f"Loading training energy from {args.train_energy}")
     train_energy = np.loadtxt(args.train_energy, dtype=float).reshape(-1)
-    print(f"Loaded {train_energy.shape[0]} energy values")
 
     thresh, normal_ratio, cluster_percentages = compute_threshold_from_energy(
         train_energy,

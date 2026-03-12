@@ -17,7 +17,7 @@ def load_scores(score_files: List[str]) -> np.ndarray:
     for path in score_files:
         scores = np.loadtxt(path, dtype=float).reshape(-1)
         arrays.append(scores)
-        print(f"Loaded {scores.shape[0]} scores from {path}")
+        print(f"Loaded scores from {path}")
 
     stacked = np.vstack(arrays).T  # [n_models, n_samples] -> [n_samples, n_models]
     print(f"Stacked scores shape: {stacked.shape}")

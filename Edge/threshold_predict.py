@@ -137,7 +137,6 @@ def main() -> None:
     args = parse_args()
     print(f"Loading scores from {args.score_file}")
     scores = np.loadtxt(args.score_file, dtype=float).reshape(-1)
-    print(f"Loaded {scores.shape[0]} scores")
 
     threshold = resolve_threshold(args)
     print(f"Using threshold: {threshold}")
