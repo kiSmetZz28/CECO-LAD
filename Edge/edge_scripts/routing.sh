@@ -8,5 +8,5 @@ python mahalanobis_routing.py \
 	--dataset os \
 	--energy_names Openstack_e6_k1_l3_b96 Openstack_e10_k5_l3_b64 Openstack_e10_k5_l3_b96 \
 	--output_indices prediction_results/os_indices.txt \
-	--test_data_file dataset/OpenStack_test_data_w100_len10.csv \
+	--test_data_file dataset/openstack_processed_data.csv \
 	--output_selected_data prediction_results/os_selected.txt
