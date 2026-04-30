@@ -1,0 +1,590 @@
+"""
+Ingest log datasets into the CECO-LAD SQLite database.
+
+Imports (in order):
+  1. BGL processed windows   (train.csv + test.csv)
+  2. HDFS processed windows  (train.csv + test.csv)
+  3. BGL raw structured logs (BGL.log_structured.csv — all rows)
+  4. HDFS raw structured logs (HDFS.log_structured.csv — test-window rows only)
+  5. OpenStack raw logs       (openstack_*.log)
+
+Run standalone:  python dashboard/ingest.py
+"""
+import csv
+import hashlib
+import re
+import sqlite3
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Callable, Optional
+
+DB_PATH  = Path(__file__).parent / "ceco_lad.db"
+LOG_ROOT = Path.home() / "Desktop" / "Log Data"
+
+BLK_RE = re.compile(r"blk_-?\d+")
+BATCH  = 25_000   # rows per executemany call
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
+
+def _conn(fast: bool = False) -> sqlite3.Connection:
+    # Always use WAL mode — it allows concurrent reads while bulk-writing,
+    # preventing "database is locked" errors from the status-polling loop.
+    c = sqlite3.connect(str(DB_PATH), timeout=60.0)
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=OFF" if fast else "PRAGMA synchronous=NORMAL")
+    c.execute("PRAGMA busy_timeout=30000")   # wait up to 30 s on a locked DB
+    c.execute("PRAGMA cache_size=-131072")   # 128 MB page cache
+    c.execute("PRAGMA foreign_keys=OFF")
+    return c
+
+
+def _set_status(key: str, value: str) -> None:
+    with _conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO ingest_status(key, value) VALUES (?,?)",
+            (key, value),
+        )
+
+
+def _insert_windows(rows: list) -> None:
+    with _conn(fast=True) as c:
+        c.executemany(
+            "INSERT OR REPLACE INTO windows"
+            "(dataset, split, window_index, block_id, label, session_length, content)"
+            " VALUES (?,?,?,?,?,?,?)",
+            rows,
+        )
+
+
+def _insert_raw(rows: list) -> None:
+    with _conn(fast=True) as c:
+        c.executemany(
+            "INSERT OR IGNORE INTO raw_logs"
+            "(dataset, line_number, label, timestamp, component, level, content, block_id)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            rows,
+        )
+
+
+def _rebuild_indexes() -> None:
+    with _conn() as c:
+        c.executescript("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_rl_key  ON raw_logs(dataset, line_number);
+            CREATE INDEX IF NOT EXISTS idx_rl_ds          ON raw_logs(dataset);
+            CREATE INDEX IF NOT EXISTS idx_rl_blk         ON raw_logs(block_id) WHERE block_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_rl_lbl         ON raw_logs(dataset, label);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_win_key ON windows(dataset, split, window_index);
+            CREATE INDEX IF NOT EXISTS idx_win_ds         ON windows(dataset, split);
+            CREATE INDEX IF NOT EXISTS idx_win_blk        ON windows(block_id) WHERE block_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_win_lbl        ON windows(dataset, split, label);
+        """)
+
+
+# ── Window imports ────────────────────────────────────────────────────────────
+
+def _ingest_windows(dataset: str, data_dir: Path, label_col: str, id_col: Optional[str]) -> None:
+    rows: list = []
+    for split in ("train", "test"):
+        csv_path = data_dir / f"{split}.csv"
+        if not csv_path.exists():
+            continue
+        with open(csv_path, newline="", encoding="utf-8", errors="replace") as f:
+            for i, row in enumerate(csv.DictReader(f)):
+                raw_lbl = row.get(label_col, "0")
+                try:
+                    lbl = int(float(raw_lbl))
+                except (ValueError, TypeError):
+                    lbl = 1 if str(raw_lbl) not in ("0", "-", "normal") else 0
+                rows.append((
+                    dataset, split, i,
+                    row.get(id_col) or None if id_col else None,
+                    lbl,
+                    int(float(row.get("session_length") or 0)),
+                    row.get("Content", ""),
+                ))
+                if len(rows) >= BATCH:
+                    _insert_windows(rows); rows = []
+    if rows:
+        _insert_windows(rows)
+
+
+def _already_done(status_key: str, count_query: str) -> bool:
+    """Return True if this table already has data from a completed import."""
+    with _conn() as c:
+        st = c.execute(
+            "SELECT value FROM ingest_status WHERE key=?", (status_key,)
+        ).fetchone()
+        if st and str(st[0]).startswith("done:"):
+            n = c.execute(count_query).fetchone()[0]
+            if n > 0:
+                return True
+    return False
+
+
+def ingest_bgl_windows(cb: Optional[Callable] = None) -> None:
+    if _already_done("bgl_windows", "SELECT COUNT(*) FROM windows WHERE dataset='bgl'"):
+        cb and cb("BGL windows already in DB — skipping."); return
+    cb and cb("Importing BGL windows…")
+    _set_status("bgl_windows", "running")
+    _ingest_windows("bgl", LOG_ROOT / "BGL", "Label", None)
+    _set_status("bgl_windows", "done:")
+    cb and cb("BGL windows done.")
+
+
+def ingest_hdfs_windows(cb: Optional[Callable] = None) -> None:
+    if _already_done("hdfs_windows", "SELECT COUNT(*) FROM windows WHERE dataset='hdfs'"):
+        cb and cb("HDFS windows already in DB — skipping."); return
+    cb and cb("Importing HDFS windows…")
+    _set_status("hdfs_windows", "running")
+    _ingest_windows("hdfs", LOG_ROOT / "HDFS_v1", "Label", "BlockId")
+    _set_status("hdfs_windows", "done:")
+    cb and cb("HDFS windows done.")
+
+
+# ── Raw-log imports ───────────────────────────────────────────────────────────
+
+def ingest_bgl_raw(cb: Optional[Callable] = None) -> None:
+    if _already_done("bgl_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='bgl'"):
+        cb and cb("BGL raw logs already in DB — skipping."); return
+    csv_path = LOG_ROOT / "BGL" / "BGL.log_structured.csv"
+    if not csv_path.exists():
+        _set_status("bgl_raw", "skipped:missing_file")
+        cb and cb("BGL structured CSV not found — skipping raw import.")
+        return
+
+    cb and cb("Importing BGL raw logs…")
+    _set_status("bgl_raw", "running:0")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM raw_logs WHERE dataset='bgl'")
+
+    rows: list = []
+    n = 0
+    with open(csv_path, newline="", encoding="utf-8", errors="replace") as f:
+        for row in csv.DictReader(f):
+            lbl = row.get("Label", "-")
+            comp = row.get("Component1") or ""
+            comp2 = row.get("Component2") or ""
+            if comp2:
+                comp = f"{comp}/{comp2}"
+            rows.append((
+                "bgl", n,
+                None if lbl == "-" else lbl,
+                row.get("Time") or row.get("Date"),
+                comp,
+                row.get("Level"),
+                row.get("Content"),
+                None,
+            ))
+            n += 1
+            if len(rows) >= BATCH:
+                _insert_raw(rows); rows = []
+                if n % 500_000 == 0:
+                    _set_status("bgl_raw", f"running:{n}")
+                    cb and cb(f"  BGL raw: {n:,} rows…")
+    if rows:
+        _insert_raw(rows)
+    _set_status("bgl_raw", f"done:{n}")
+    cb and cb(f"BGL raw logs done ({n:,} rows).")
+
+
+def ingest_hdfs_raw(cb: Optional[Callable] = None) -> None:
+    if _already_done("hdfs_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='hdfs'"):
+        cb and cb("HDFS raw logs already in DB — skipping."); return
+    struct_path = LOG_ROOT / "HDFS_v1" / "HDFS.log_structured.csv"
+    test_path   = LOG_ROOT / "HDFS_v1" / "test.csv"
+    if not struct_path.exists():
+        _set_status("hdfs_raw", "skipped:missing_file")
+        cb and cb("HDFS structured CSV not found — skipping raw import.")
+        return
+
+    # Collect block IDs from test windows so we only import relevant rows
+    test_blk: set = set()
+    if test_path.exists():
+        with open(test_path, newline="", encoding="utf-8", errors="replace") as f:
+            for row in csv.DictReader(f):
+                bid = (row.get("BlockId") or "").strip()
+                if bid:
+                    test_blk.add(bid)
+        cb and cb(f"Loaded {len(test_blk):,} HDFS test block IDs.")
+
+    cb and cb("Importing HDFS raw logs (test windows only)…")
+    _set_status("hdfs_raw", "running:0")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM raw_logs WHERE dataset='hdfs'")
+
+    rows: list = []
+    line_num = 0
+    inserted = 0
+    with open(struct_path, newline="", encoding="utf-8", errors="replace") as f:
+        for row in csv.DictReader(f):
+            line_num += 1
+            content = row.get("Content", "")
+            m = BLK_RE.search(content)
+            blk = m.group() if m else None
+            if test_blk and blk not in test_blk:
+                continue
+            rows.append((
+                "hdfs", line_num,
+                None,
+                f"{row.get('Date','')} {row.get('Time','')}".strip(),
+                row.get("Component"),
+                row.get("Level"),
+                content,
+                blk,
+            ))
+            inserted += 1
+            if len(rows) >= BATCH:
+                _insert_raw(rows); rows = []
+                if inserted % 500_000 == 0:
+                    _set_status("hdfs_raw", f"running:{inserted}")
+                    cb and cb(f"  HDFS raw: {inserted:,} rows…")
+    if rows:
+        _insert_raw(rows)
+    _set_status("hdfs_raw", f"done:{inserted}")
+    cb and cb(f"HDFS raw logs done ({inserted:,} rows from {line_num:,} scanned).")
+
+
+# ── Synthetic OpenStack log generator ────────────────────────────────────────
+# Realistic log message templates based on the Nova / Keystone / Neutron
+# patterns found in the LogHub OpenStack dataset.  Used when the original
+# openstack_*.log files are not available (demo / container deployments).
+
+_OS_COMPONENTS = [
+    "nova.osapi_compute.wsgi.server",
+    "nova.compute.manager",
+    "nova.scheduler.manager",
+    "nova.conductor.manager",
+    "nova.network.manager",
+    "keystonemiddleware.auth_token",
+    "nova.api.openstack.requestlog",
+]
+
+_NORMAL_MSGS = [
+    ('INFO',    "nova.osapi_compute.wsgi.server",
+     '{ip} "GET /v2/{proj}/servers/detail HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
+    ('INFO',    "nova.osapi_compute.wsgi.server",
+     '{ip} "GET /v2/{proj}/flavors HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
+    ('INFO',    "nova.osapi_compute.wsgi.server",
+     '{ip} "GET /v2/{proj}/os-hypervisors/detail HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
+    ('INFO',    "nova.osapi_compute.wsgi.server",
+     '{ip} "POST /v2/{proj}/servers HTTP/1.1" status: 202 len: {sz} time: {t:.4f}'),
+    ('INFO',    "nova.osapi_compute.wsgi.server",
+     '{ip} "DELETE /v2/{proj}/servers/{srv} HTTP/1.1" status: 204 len: 0 time: {t:.4f}'),
+    ('INFO',    "nova.compute.manager",
+     '[instance: {inst}] VM started successfully.'),
+    ('INFO',    "nova.compute.manager",
+     '[instance: {inst}] Updating instance state to active.'),
+    ('INFO',    "nova.compute.manager",
+     '[instance: {inst}] Network info cache updated.'),
+    ('INFO',    "nova.compute.manager",
+     '[instance: {inst}] Terminating instance.'),
+    ('INFO',    "nova.scheduler.manager",
+     'Scheduling instance {inst} to host {host}.'),
+    ('INFO',    "nova.conductor.manager",
+     'Instance {inst} moved to state BUILD.'),
+    ('INFO',    "keystonemiddleware.auth_token",
+     'Received request for token validation.'),
+    ('INFO',    "nova.api.openstack.requestlog",
+     '{ip} "GET /v2.1/{proj}/os-aggregates HTTP/1.1" 200 {sz} {t:.4f}'),
+]
+
+_ABNORMAL_MSGS = [
+    ('ERROR',   "nova.compute.manager",
+     '[instance: {inst}] Build of instance failed: No valid host was found.'),
+    ('ERROR',   "nova.compute.manager",
+     '[instance: {inst}] Error destroying instance on host {host}: Timeout.'),
+    ('ERROR',   "nova.osapi_compute.wsgi.server",
+     '{ip} "POST /v2/{proj}/servers HTTP/1.1" status: 500 len: {sz} time: {t:.4f}'),
+    ('WARNING', "nova.scheduler.manager",
+     'No hosts available for instance {inst}. Retrying...'),
+    ('WARNING', "nova.compute.manager",
+     '[instance: {inst}] Timeout waiting for instance to become active.'),
+    ('ERROR',   "nova.network.manager",
+     'Failed to allocate network for instance {inst}: Connection refused.'),
+    ('ERROR',   "keystonemiddleware.auth_token",
+     'Authorization failed: Token {tok} is invalid or expired.'),
+    ('WARNING', "nova.conductor.manager",
+     'Instance {inst} entered ERROR state after {n} retries.'),
+]
+
+
+def _synth_val(seed: int, key: str) -> str:
+    """Generate a deterministic pseudo-random value for a template placeholder."""
+    h = int(hashlib.md5(f"{seed}{key}".encode()).hexdigest(), 16)
+    if key == "ip":
+        return f"10.0.{(h>>8)&255}.{h&255}"
+    if key == "proj":
+        proj_ids = ["a1b2c3", "d4e5f6", "7g8h9i", "j0k1l2"]
+        return proj_ids[h % len(proj_ids)]
+    if key == "srv":
+        return hashlib.md5(f"srv{seed}".encode()).hexdigest()[:8]
+    if key == "inst":
+        return hashlib.md5(f"inst{seed}".encode()).hexdigest()[:8]
+    if key == "host":
+        return f"compute-node-{h % 4:02d}"
+    if key == "tok":
+        return hashlib.md5(f"tok{seed}".encode()).hexdigest()[:12]
+    if key == "sz":
+        return str(128 + (h % 4096))
+    if key == "t":
+        return f"{0.001 + (h % 500) / 10000:.4f}"
+    if key == "n":
+        return str(1 + h % 5)
+    return str(h % 100)
+
+
+def _make_log_line(seed: int, level: str, component: str, template: str,
+                   ts: datetime, pid: int) -> tuple:
+    """Render one synthetic log line and return a raw_logs insert tuple."""
+    # Fill in all placeholders deterministically from the seed
+    import re as _re
+    def _sub(m):
+        return _synth_val(seed, m.group(1))
+    content = _re.sub(r"\{(\w+)(?::[^}]*)?\}", _sub, template)
+    ts_str  = ts.strftime("%Y-%m-%d %H:%M:%S.") + f"{seed % 1000:03d}"
+    return ts_str, component, level, content
+
+
+def _ingest_os_synthetic_raw(cb: Optional[Callable] = None) -> None:
+    """Generate realistic OpenStack log messages when source .log files are absent.
+
+    Produces one log row per event in each processed session, using realistic
+    Nova / Keystone message templates so the Raw Log Lines panel shows actual
+    log-style content instead of event IDs.
+
+    Detection marker: timestamp is a real datetime string (NOT NULL), so the
+    _find_window_for_raw mapping still uses the lines-per-session estimates.
+    """
+    data_dir = Path(__file__).parent.parent / "data" / "OpenStack"
+    if not data_dir.exists():
+        _set_status("os_raw", "skipped:missing_data_dir")
+        cb and cb("data/OpenStack not found — cannot generate synthetic raw logs.")
+        return
+
+    cb and cb("Generating synthetic OpenStack raw logs from event sequences…")
+    _set_status("os_raw", "running")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM raw_logs WHERE dataset='os'")
+
+    file_meta = [
+        ("train.txt",         "0", "train_normal",   _NORMAL_MSGS),
+        ("test_normal.txt",   "0", "test_normal",    _NORMAL_MSGS),
+        ("test_abnormal.txt", "1", "test_abnormal",  _ABNORMAL_MSGS),
+    ]
+
+    rows: list = []
+    global_n  = 0   # global line_number counter
+    base_time = datetime(2021, 8, 29, 8, 0, 0)
+
+    for fname, label, block_id, templates in file_meta:
+        fpath = data_dir / fname
+        if not fpath.exists():
+            continue
+        with open(fpath, encoding="utf-8", errors="replace") as f:
+            for sess_idx, line in enumerate(f):
+                events = line.split()
+                if not events:
+                    continue
+                pid = 1000 + (sess_idx % 9000)
+                for ev_pos, ev_id in enumerate(events):
+                    # Pick a template based on event ID for deterministic variety
+                    ev_int  = int(ev_id) if ev_id.isdigit() else 0
+                    tmpl    = templates[ev_int % len(templates)]
+                    level, component, msg_template = tmpl
+                    # Advance timestamp slightly per event
+                    ts = base_time + timedelta(
+                        hours=sess_idx // 60,
+                        minutes=sess_idx % 60,
+                        seconds=ev_pos,
+                        milliseconds=(ev_int * 37) % 1000,
+                    )
+                    seed    = global_n
+                    ts_str, comp, lvl, content = _make_log_line(
+                        seed, level, component, msg_template, ts, pid
+                    )
+                    rows.append((
+                        "os", global_n, label,
+                        ts_str, comp, lvl, content, block_id,
+                    ))
+                    global_n += 1
+                    if len(rows) >= BATCH:
+                        _insert_raw(rows)
+                        rows = []
+    if rows:
+        _insert_raw(rows)
+    _set_status("os_raw", f"done:{global_n}")
+    cb and cb(f"Synthetic OpenStack raw logs done ({global_n:,} rows).")
+
+
+def ingest_os_raw(cb: Optional[Callable] = None) -> None:
+    """
+    Import OpenStack raw log files into raw_logs.
+
+    Split labelling based on source file:
+      normal1.log   → split=train,      label=0  (block_id='train_normal')
+      normal2.log   → split=test/normal, label=0  (block_id='test_normal')
+      abnormal.log  → split=test/abnorm, label=1  (block_id='test_abnormal')
+
+    Falls back to synthetic entries from data/OpenStack/*.txt when the source
+    log files are not present (e.g. demo deployments without full data).
+    """
+    if _already_done("os_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='os'"):
+        cb and cb("OpenStack raw logs already in DB — skipping."); return
+    os_dir = LOG_ROOT / "OpenStack"
+    if not os_dir.exists():
+        cb and cb("OpenStack log directory not found — using synthetic raw logs from processed data.")
+        _ingest_os_synthetic_raw(cb)
+        return
+
+    # file → (label, block_id tag)
+    file_meta = {
+        "openstack_normal1.log":   ("0", "train_normal"),
+        "openstack_normal2.log":   ("0", "test_normal"),
+        "openstack_abnormal.log":  ("1", "test_abnormal"),
+    }
+    cb and cb("Importing OpenStack raw logs…")
+    _set_status("os_raw", "running")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM raw_logs WHERE dataset='os'")
+
+    # Pattern: source_file  YYYY-MM-DD HH:MM:SS.fff  PID  LEVEL  component  rest
+    pat = re.compile(
+        r"^(\S+)\s+"
+        r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+        r"(\d+)\s+(\w+)\s+(\S+)\s+(.*)"
+    )
+    rows: list = []
+    n = 0
+    for fname, (file_lbl, block_tag) in file_meta.items():
+        lf = os_dir / fname
+        if not lf.exists():
+            cb and cb(f"  {fname} not found — skipping.")
+            continue
+        with open(lf, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip()
+                if not line:
+                    continue
+                m = pat.match(line)
+                if m:
+                    rows.append((
+                        "os", n, file_lbl,
+                        m.group(2), m.group(5), m.group(4),
+                        m.group(6)[:500], block_tag,
+                    ))
+                else:
+                    rows.append(("os", n, file_lbl, None, None, None, line[:500], block_tag))
+                n += 1
+                if len(rows) >= BATCH:
+                    _insert_raw(rows); rows = []
+    if rows:
+        _insert_raw(rows)
+    _set_status("os_raw", f"done:{n}")
+    cb and cb(f"OpenStack raw logs done ({n:,} rows).")
+
+
+def ingest_os_windows(cb: Optional[Callable] = None) -> None:
+    """
+    Import processed OpenStack sequences from data/OpenStack/*.txt into windows.
+
+    Each line in the txt file = one session (sequence of event template IDs).
+    - train.txt          → split='train', label=0,  window_index 0..N-1
+    - test_normal.txt    → split='test',  label=0,  window_index 0..M-1
+    - test_abnormal.txt  → split='test',  label=1,  window_index M..M+K-1
+
+    The concatenated test window order (normal first, then abnormal) matches
+    the order used by OpenStackSegLoader for ground_truth / predictions.
+    """
+    if _already_done("os_windows", "SELECT COUNT(*) FROM windows WHERE dataset='os'"):
+        cb and cb("OpenStack windows already in DB — skipping."); return
+    data_dir = Path(__file__).parent.parent / "data" / "OpenStack"
+    if not data_dir.exists():
+        _set_status("os_windows", "skipped:missing_data_dir")
+        cb and cb("data/OpenStack not found — skipping OS windows.")
+        return
+
+    cb and cb("Importing OpenStack processed windows…")
+    _set_status("os_windows", "running")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM windows WHERE dataset='os'")
+
+    rows: list = []
+
+    # Train windows (all normal)
+    train_path = data_dir / "train.txt"
+    if train_path.exists():
+        with open(train_path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                seq = line.strip()
+                if seq:
+                    rows.append(("os", "train", i, "train_normal", 0,
+                                  len(seq.split()), seq))
+
+    # Test windows — normal first, then abnormal (matches loader concat order)
+    test_offset = 0
+    for fname, lbl, blk_tag in [
+        ("test_normal.txt",   0, "test_normal"),
+        ("test_abnormal.txt", 1, "test_abnormal"),
+    ]:
+        p = data_dir / fname
+        if not p.exists():
+            continue
+        count = 0
+        with open(p, encoding="utf-8", errors="replace") as f:
+            for j, line in enumerate(f):
+                seq = line.strip()
+                if seq:
+                    rows.append(("os", "test", test_offset + j, blk_tag, lbl,
+                                  len(seq.split()), seq))
+                count = j + 1  # track last index even if line was blank
+        test_offset += count  # next file's indices start after this file's last
+
+    if rows:
+        _insert_windows(rows)
+    n = len(rows)
+    _set_status("os_windows", f"done:{n}")
+    cb and cb(f"OpenStack windows done ({n:,} sessions).")
+
+
+# ── Full pipeline ─────────────────────────────────────────────────────────────
+
+def run_full_ingest(cb: Optional[Callable] = None) -> None:
+    """Run all ingestion steps. Safe to call multiple times (idempotent per step)."""
+    _set_status("overall", "running")
+    t0 = time.time()
+
+    steps = [
+        ingest_bgl_windows,
+        ingest_hdfs_windows,
+        ingest_os_windows,
+        ingest_bgl_raw,
+        ingest_hdfs_raw,
+        ingest_os_raw,
+    ]
+
+    for fn in steps:
+        try:
+            fn(cb)
+        except Exception as exc:
+            msg = f"[ERROR] {fn.__name__}: {exc}"
+            cb and cb(msg)
+            _set_status(fn.__name__, f"error:{exc}")
+
+    cb and cb("Rebuilding indexes…")
+    _rebuild_indexes()
+
+    elapsed = time.time() - t0
+    _set_status("overall", f"done:{elapsed:.1f}s")
+    cb and cb(f"Import complete in {elapsed:.1f}s")
+
+
+# ── Standalone entry point ────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from db import init_db
+    init_db()
+    run_full_ingest(print)

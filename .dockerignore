@@ -1,0 +1,42 @@
+# Model checkpoints — downloaded at first launch by spaces_startup.py
+# BAT full-precision checkpoints (3.5 GB) are fetched from Google Drive
+checkpoints/
+*.pte
+
+# ExecuTorch C++ source (3 GB) and edge/training pipelines
+inference_pipeline/executorch/
+inference_pipeline/edge_agent.py
+inference_pipeline/evaluate.py
+inference_pipeline/run.py
+# routing.py is kept — demo_runner.py needs it for Mahalanobis routing
+training_pipeline/
+edge_pipeline/
+cloud/
+edge/
+tests/
+environment/
+# tools/ is partially included: download_checkpoints.py is explicitly COPYed
+tools/
+!tools/download_checkpoints.py
+
+# Runtime artefacts
+logs/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Pre-built database — too large for image; app initialises an empty DB on startup
+dashboard/ceco_lad.db
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docs
+pictures/
+*.md
+LICENSE
