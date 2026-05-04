@@ -144,21 +144,21 @@ python run.py infer bgl
 python run.py infer hdfs
 ```
 
-**Run edge only** (no cloud re-check):
-```bash
-conda activate ceco-lad
-python -m inference_pipeline.run --config configs/inference/os.yaml --edge-only
-```
-
-**Run cloud re-check only** (requires edge outputs to already exist):
-```bash
-conda activate hybrid
-python dashboard/cloud_runner.py --config configs/inference/os.yaml
-```
-
 ---
 
 ## Advanced Options
+
+### Run edge or cloud only
+
+```bash
+# Edge inference only (no cloud re-check)
+conda activate ceco-lad
+python -m inference_pipeline.run --config configs/inference/os.yaml --edge-only
+
+# Cloud re-check only (requires edge outputs to already exist)
+conda activate hybrid
+python dashboard/cloud_runner.py --config configs/inference/os.yaml
+```
 
 ### Train from scratch
 
@@ -182,8 +182,6 @@ python run.py convert os && python run.py convert bgl && python run.py convert h
 ```
 
 Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset}/`. Skip if you downloaded Q-BAT checkpoints in Step 2.
-
----
 
 ---
 
