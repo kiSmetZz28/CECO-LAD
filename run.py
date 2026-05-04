@@ -7,7 +7,6 @@ Usage
   python run.py eval     [DATASET] [VOTING]
   python run.py convert  [DATASET]
   python run.py infer    [DATASET]
-  python run.py test
   python run.py help
 
 Examples
@@ -19,7 +18,6 @@ Examples
   python run.py eval bgl all
   python run.py convert bgl
   python run.py infer bgl
-  python run.py test
 """
 
 import subprocess
@@ -78,10 +76,6 @@ def main() -> None:
         print(f"[run] Inference pipeline — dataset: {dataset}")
         _run_module("inference_pipeline.run",
                     "--config", f"configs/inference/{dataset}.yaml")
-
-    elif command == "test":
-        print("[run] Running test suite")
-        _run_module("pytest", "tests/", "-v")
 
     elif command in ("help", "--help", "-h"):
         print(__doc__)
