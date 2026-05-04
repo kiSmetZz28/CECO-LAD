@@ -69,16 +69,23 @@ def _run_one_bat(
             energy_parts.append(
                 compute_energy_batch(model, x[start:start + infer_batch_size], win_size)
             )
-    energy = np.concatenate(energy_parts)
+    energy = np.concatenate(energy_parts)   # [N_windows, win_size]
 
     del model   # release GPU memory for this thread
 
+    thresh = thresholds[model_name]
+    preds  = (energy > thresh).astype(int)  # [N_windows, win_size]
+
     logging.info("BAT model '%s' done.", model_name)
-    return (energy > thresholds[model_name]).astype(int).reshape(-1, 1)
+    return preds.reshape(-1, 1)             # [N_windows * win_size, 1] — one per line
 
 
 def run(windows: np.ndarray, config: dict) -> np.ndarray:
-    """Run all BAT cloud checkpoints in parallel and return 1-D ensemble predictions.
+    """Run all BAT cloud checkpoints and return 1-D ensemble predictions.
+
+    On CUDA, models are processed sequentially — GPU ops serialize on a single
+    device stream regardless of thread count, so threads only add overhead and
+    VRAM pressure.  On CPU, a small thread pool is used.
 
     Parameters
     ----------
@@ -93,7 +100,11 @@ def run(windows: np.ndarray, config: dict) -> np.ndarray:
     if len(windows) == 0:
         raise ValueError("No routed windows to process.")
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    try:
+        _cuda = torch.cuda.is_available()
+    except Exception:
+        _cuda = False
+    device = torch.device('cuda:0' if _cuda else 'cpu')
 
     dataset          = config['dataset']
     win_size         = config['win_size']
@@ -102,32 +113,50 @@ def run(windows: np.ndarray, config: dict) -> np.ndarray:
     model_save_path  = config['model_save_path']
     thresholds_yaml  = config['thresholds_yaml']
     voting           = config.get('voting', 'majority')
-    max_workers      = config.get('max_parallel_models', 4)
     infer_batch_size = config.get('infer_batch_size', 64)
+
+    # CUDA: sequential is optimal — GPU already handles one model at a time
+    # efficiently, and multiple threads only cause VRAM pressure + contention.
+    # CPU: a small pool helps; more than 4 gives diminishing returns.
+    if 'max_parallel_models' in config:
+        max_workers = config['max_parallel_models']
+    elif device.type == 'cuda':
+        max_workers = 1
+    else:
+        max_workers = min(4, os.cpu_count() or 1)
 
     thresholds   = _load_thresholds(thresholds_yaml)
     search_keys  = ['num_epochs', 'k', 'e_layer_num', 'batch_size']
     combinations = list(product(*[config[k] for k in search_keys]))
 
     logging.info(
-        "Cloud expert: %d windows, %d BAT checkpoints, %d parallel workers, device=%s",
-        len(windows), len(combinations), max_workers, device,
+        "Cloud expert: %d BAT checkpoints, %d worker(s), device=%s",
+        len(combinations), max_workers, device,
     )
 
-    # Transfer input to device once — all worker threads share it read-only.
+    # Transfer input to device once — shared read-only across all models.
     x = torch.from_numpy(windows).float().to(device)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
-                _run_one_bat,
+    if max_workers == 1:
+        # Sequential — no thread pool overhead, one model in VRAM at a time.
+        results = [
+            _run_one_bat(
                 combo, dataset, win_size, input_c, output_c,
-                model_save_path, thresholds, x, device,
-                infer_batch_size,
+                model_save_path, thresholds, x, device, infer_batch_size,
             )
             for combo in combinations
         ]
-        results = [f.result() for f in futures]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    _run_one_bat,
+                    combo, dataset, win_size, input_c, output_c,
+                    model_save_path, thresholds, x, device, infer_batch_size,
+                )
+                for combo in combinations
+            ]
+            results = [f.result() for f in futures]
 
     all_preds: List[np.ndarray] = [r for r in results if r is not None]
 

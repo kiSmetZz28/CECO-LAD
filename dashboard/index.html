@@ -304,6 +304,18 @@ select:focus{outline:none;border-color:var(--blue);}
 .mg-label{font-size:12px;font-weight:700;margin-bottom:3px;}
 .mg-desc{font-size:11px;color:var(--muted);line-height:1.55;}
 
+/* ── Predict mini pipeline bar ─────────────────────────── */
+.pred-pipe{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.pred-pipe-step{flex:1;padding:7px 3px;text-align:center;border-right:1px solid var(--border);}
+.pred-pipe-step:last-child{border-right:none;}
+.pred-pipe-step.pp-done{background:rgba(22,163,74,.06);}
+.pred-pipe-step.pp-active{background:rgba(37,99,235,.07);}
+.pred-pipe-step .pp-ico{font-size:13px;display:block;}
+.pred-pipe-step .pp-lbl{font-size:9px;font-weight:700;color:var(--muted);}
+.pred-pipe-step.pp-done .pp-lbl{color:var(--green);}
+.pred-pipe-step.pp-active .pp-lbl{color:var(--blue);}
+.pred-pipe-step .pp-sub{font-size:8px;color:var(--muted);}
+
 /* ── Raw-log predict panel ─────────────────────────────── */
 .pl-row{cursor:pointer;}
 .raw-predict-panel{
@@ -345,6 +357,83 @@ select:focus{outline:none;border-color:var(--blue);}
 .modal-section{margin-bottom:14px;}
 .modal-section-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
 .modal-content-box{background:#1a1d27;color:#86efac;font-family:monospace;font-size:10px;border-radius:7px;padding:8px 12px;max-height:100px;overflow-y:auto;line-height:1.55;word-break:break-word;}
+
+/* ── Guided Tour ─────────────────────────────────────────── */
+/* Intro card (step 0) */
+.tour-intro-overlay{
+  position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);
+  z-index:1800;display:flex;align-items:center;justify-content:center;padding:16px;
+}
+.tour-intro-overlay.hidden{display:none;}
+.tour-intro-card{
+  background:var(--card);border-radius:16px;
+  box-shadow:0 24px 64px rgba(0,0,0,.28);
+  max-width:600px;width:100%;max-height:92vh;overflow-y:auto;
+}
+.welcome-header{
+  background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 50%,#6d28d9 100%);
+  border-radius:16px 16px 0 0;padding:24px 28px 20px;color:#fff;
+  display:flex;align-items:center;gap:16px;
+}
+.welcome-header-icon{font-size:36px;flex-shrink:0;}
+.welcome-header-text h2{font-size:19px;font-weight:800;letter-spacing:-.03em;margin-bottom:3px;}
+.welcome-header-text p{font-size:11.5px;opacity:.82;line-height:1.5;margin:0;}
+.welcome-body{padding:20px 24px 10px;}
+.welcome-arch{
+  background:linear-gradient(90deg,rgba(37,99,235,.06) 0%,rgba(124,58,237,.06) 100%);
+  border:1px solid var(--border);border-radius:10px;padding:12px 10px;
+  margin-bottom:14px;overflow-x:auto;
+}
+.welcome-arch-inner{display:flex;align-items:center;justify-content:center;min-width:max-content;margin:0 auto;}
+.wa-node{
+  text-align:center;padding:8px 10px;background:var(--card);
+  border:1px solid var(--border);border-radius:9px;min-width:74px;
+  font-size:10px;line-height:1.4;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.wa-node .wa-icon{font-size:18px;display:block;margin-bottom:3px;}
+.wa-node .wa-lbl{font-weight:700;color:var(--text);font-size:11px;}
+.wa-node .wa-sub{color:var(--muted);font-size:9px;}
+.wa-arrow{color:var(--blue);font-size:14px;padding:0 5px;flex-shrink:0;opacity:.6;}
+.tour-intro-footer{
+  padding:12px 24px 18px;display:flex;align-items:center;justify-content:space-between;
+  border-top:1px solid var(--border);margin-top:8px;
+}
+.tour-intro-footer label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;}
+/* Spotlight highlight box */
+.tour-highlight-box{
+  position:fixed;z-index:1801;border-radius:8px;
+  box-shadow:0 0 0 9999px rgba(15,23,42,.72),0 0 0 3px rgba(37,99,235,.9);
+  pointer-events:none;
+  transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease;
+}
+.tour-highlight-box.hidden{display:none;}
+/* Tour tooltip */
+.tour-tooltip{
+  position:fixed;z-index:1802;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.28);
+  padding:16px 18px;width:272px;pointer-events:all;
+}
+.tour-tooltip.hidden{display:none;}
+.tour-step-badge{font-size:9.5px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;}
+.tour-tooltip-title{font-size:13.5px;font-weight:800;margin-bottom:6px;color:var(--text);}
+.tour-tooltip-desc{font-size:11.5px;color:var(--muted);line-height:1.55;margin-bottom:14px;}
+.tour-tooltip-desc strong{color:var(--text);}
+.tour-nav{display:flex;align-items:center;gap:8px;}
+.tour-dots{display:flex;gap:5px;flex:1;justify-content:center;}
+.tour-dot{width:6px;height:6px;border-radius:50%;background:var(--border);transition:background .2s;}
+.tour-dot.active{background:var(--blue);}
+.tour-btn-skip{background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;padding:2px 4px;white-space:nowrap;}
+.tour-btn-skip:hover{color:var(--text);}
+.tour-btn-prev{padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);cursor:pointer;font-size:11px;font-weight:600;}
+.tour-btn-prev:hover{color:var(--text);}
+.tour-btn-next{padding:6px 14px;font-size:12px;font-weight:700;}
+.btn-help{
+  padding:4px 12px;border:1px solid var(--border);border-radius:8px;
+  background:transparent;color:var(--muted);cursor:pointer;
+  font-size:12px;font-weight:600;transition:background .12s;
+}
+.btn-help:hover{background:var(--bg);color:var(--text);}
 </style>
 </head>
 <body>
@@ -355,9 +444,68 @@ select:focus{outline:none;border-color:var(--blue);}
   <span class="badge">v2</span>
   <span class="hdr-sub">Cloud-Edge Collaborative Log Anomaly Detection</span>
   <div class="hdr-right">
+    <button class="btn-help" onclick="showWelcome()">? Help</button>
     <div class="status-pill">
       <div class="dot" id="statusDot"></div>
       <span id="statusTxt">Idle</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GUIDED TOUR ═══════════════════════════════════════════ -->
+
+<!-- Step 0: Intro card -->
+<div class="tour-intro-overlay hidden" id="tourIntroOverlay" onclick="tourClickOutside(event)">
+  <div class="tour-intro-card">
+    <div class="welcome-header">
+      <div class="welcome-header-icon">🔍</div>
+      <div class="welcome-header-text">
+        <h2>Welcome to CECO-LAD</h2>
+        <p>Cloud-Edge Collaborative Log Anomaly Detection &mdash; a research prototype for detecting anomalies in system logs.</p>
+      </div>
+    </div>
+    <div class="welcome-body">
+      <div class="welcome-arch">
+        <div class="welcome-arch-inner">
+          <div class="wa-node"><span class="wa-icon">📋</span><span class="wa-lbl">Raw Logs</span><span class="wa-sub">system events</span></div>
+          <span class="wa-arrow">→</span>
+          <div class="wa-node"><span class="wa-icon">⚡</span><span class="wa-lbl">Edge AI</span><span class="wa-sub">fast Q-BAT scan</span></div>
+          <span class="wa-arrow">→</span>
+          <div class="wa-node"><span class="wa-icon">🔀</span><span class="wa-lbl">Routing</span><span class="wa-sub">uncertainty filter</span></div>
+          <span class="wa-arrow">→</span>
+          <div class="wa-node"><span class="wa-icon">☁️</span><span class="wa-lbl">Cloud AI</span><span class="wa-sub">81 BAT models</span></div>
+          <span class="wa-arrow">→</span>
+          <div class="wa-node"><span class="wa-icon">🎯</span><span class="wa-lbl">Result</span><span class="wa-sub">anomaly / normal</span></div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);line-height:1.65;margin:0 0 4px">
+        Take a <strong style="color:var(--text)">quick 5-step tour</strong> to discover the key features, or jump straight in.
+      </p>
+    </div>
+    <div class="tour-intro-footer">
+      <label><input type="checkbox" id="welcomeDontShow"> Don't show this again</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" style="font-size:12px" onclick="closeTour()">Skip</button>
+        <button class="btn btn-primary" onclick="tourNext()">Start Tour →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Spotlight highlight box (steps 1-5) -->
+<div class="tour-highlight-box hidden" id="tourHighlight"></div>
+
+<!-- Floating tooltip (steps 1-5) -->
+<div class="tour-tooltip hidden" id="tourTooltip">
+  <div class="tour-step-badge" id="tourBadge">Step 1 of 5</div>
+  <div class="tour-tooltip-title" id="tourTitle"></div>
+  <div class="tour-tooltip-desc" id="tourDesc"></div>
+  <div class="tour-nav">
+    <button class="tour-btn-skip" onclick="closeTour()">Skip tour</button>
+    <div class="tour-dots" id="tourDots"></div>
+    <div style="display:flex;gap:6px">
+      <button class="tour-btn-prev" id="tourPrevBtn" onclick="tourPrev()">←</button>
+      <button class="btn btn-primary tour-btn-next" id="tourNextBtn" onclick="tourNext()">Next →</button>
     </div>
   </div>
 </div>
@@ -388,20 +536,46 @@ select:focus{outline:none;border-color:var(--blue);}
       </div>
     </div>
 
+    <!-- Demo: HDFS unavailable notice -->
+    <div id="demoDatasetNotice" style="display:none;" class="card">
+      <div style="text-align:center;padding:32px 20px;">
+        <div style="font-size:44px;margin-bottom:12px">📦</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:10px">
+          Dataset not available in the online demo
+        </div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.7;max-width:480px;margin:0 auto 20px;">
+          <strong>HDFS</strong> raw log files are too large to include in this demo.
+          Select <strong>OpenStack</strong> or <strong>BGL</strong> to run the full
+          four-stage live pipeline (Edge AI → Routing → Cloud AI → Hybrid result).
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button class="btn btn-run"
+                  onclick="setDataset('os', document.getElementById('ds-os'))"
+                  style="font-size:13px;padding:8px 22px;">
+            Switch to OpenStack →
+          </button>
+          <button class="btn btn-run"
+                  onclick="setDataset('bgl', document.getElementById('ds-bgl'))"
+                  style="font-size:13px;padding:8px 22px;background:var(--purple);border-color:var(--purple);">
+            Switch to BGL →
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Detection settings -->
     <div class="card">
       <div class="step-hdr"><span class="step-title">Detection Settings</span></div>
       <div class="card-help">
-        <strong>Cloud check rate</strong> — how many uncertain windows get sent to the more powerful cloud AI for a second opinion.
-        Higher = more thorough, slower.
+        <strong>Routing Ratio</strong> — the proportion of edge-uncertain logs routed to the cloud BAT for a more accurate reevaluation. A higher ratio catches more edge cases at the cost of extra latency.
       </div>
       <div class="field">
-        <label class="lbl">Cloud Double-Check Rate — <span id="tolLabel" style="color:var(--amber);font-weight:700">10%</span></label>
+        <label class="lbl">Routing Ratio — <span id="tolLabel" style="color:var(--amber);font-weight:700">10%</span></label>
         <div class="range-row">
           <input type="range" id="tolSlider" min="1" max="50" value="10" step="1" oninput="onTolChange(this.value)">
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px">
-          <span>1% — fastest</span><span>50% — most thorough</span>
+          <span>1%</span><span>50%</span>
         </div>
       </div>
       <div class="field">
@@ -419,18 +593,13 @@ select:focus{outline:none;border-color:var(--blue);}
       <div id="cfgBody"><div style="color:var(--muted);font-size:11px">Loading config…</div></div>
     </div>
 
-    <!-- DB status -->
-    <div class="card" id="dbSideCard" style="padding:12px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Database</span>
-        <span id="dbStatusPill" style="font-size:10px;padding:2px 8px;border-radius:999px;background:var(--border);color:var(--muted)">—</span>
-      </div>
-      <div class="db-mini">
-        <div class="db-mini-cell"><div class="dv" id="dbs-raw-os">—</div><div class="dk">OS raw</div></div>
-        <div class="db-mini-cell"><div class="dv" id="dbs-win-os-train">—</div><div class="dk">OS train</div></div>
-        <div class="db-mini-cell"><div class="dv" id="dbs-win-os-test">—</div><div class="dk">OS test</div></div>
-      </div>
-      <div id="dbImportStatus" style="font-size:10px;color:var(--muted);margin-top:5px;font-family:monospace;min-height:13px;line-height:1.4"></div>
+    <!-- DB status (hidden) -->
+    <div id="dbSideCard" style="display:none">
+      <span id="dbStatusPill"></span>
+      <span id="dbs-raw-os"></span>
+      <span id="dbs-win-os-train"></span>
+      <span id="dbs-win-os-test"></span>
+      <span id="dbImportStatus"></span>
     </div>
 
     <!-- Run -->
@@ -440,7 +609,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <div style="height:8px"></div>
       <button class="btn btn-danger" id="stopBtn" onclick="stopPipeline()" disabled style="width:100%">■  Stop</button>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.7;text-align:center">
-        Edge AI → Smart Routing → Cloud AI<br>Typical time: a few minutes
+        Edge AI → Smart Routing → Cloud AI
       </div>
     </div>
 
@@ -490,7 +659,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <div class="pb-stage" id="pb-cloud" onclick="showTab('analysis',document.querySelector('.tab[data-tab=analysis]'))">
         <span class="pb-ico">☁️</span>
         <span class="pb-title">Cloud AI</span>
-        <span class="pb-sub">deep re-analysis (BAT, 27 models)</span>
+        <span class="pb-sub">deep re-analysis (BAT, 81 models)</span>
       </div>
       <div class="pb-arrow">›</div>
       <div class="pb-stage" id="pb-result" onclick="showTab('results',document.querySelector('.tab[data-tab=results]'))">
@@ -574,7 +743,12 @@ select:focus{outline:none;border-color:var(--blue);}
             <button class="pill-btn" id="plSplitTrain" onclick="setSplit('train',this)">Train</button>
             <button class="pill-btn active" id="plSplitTest"  onclick="setSplit('test',this)">Test</button>
           </div>
-          <!-- Label filter removed — pipeline view shows raw data without labelling -->
+          <!-- Label filter -->
+          <div class="pill-group" id="plLabelGroup">
+            <button class="pill-btn active"   id="plLabelAll"    onclick="setRawFilter('',this)">All</button>
+            <button class="pill-btn pill-norm" id="plLabelNormal" onclick="setRawFilter('0',this)">Normal</button>
+            <button class="pill-btn pill-anom" id="plLabelAnom"   onclick="setRawFilter('1',this)">Anomaly</button>
+          </div>
         </div>
 
         <div class="pl-cols">
@@ -585,8 +759,8 @@ select:focus{outline:none;border-color:var(--blue);}
               <span class="ph-icon">📄</span><strong class="ph-title">Raw Log Lines</strong>
               <span class="ph-count" id="plRawCount"></span>
             </div>
-            <div class="pl-toolbar">
-              <input type="text" id="plRawSearch" placeholder="Search messages…" oninput="plRawDeb()" style="flex:1">
+            <div class="pl-toolbar" style="display:none">
+              <input type="text" id="plRawSearch" oninput="plRawDeb()" style="flex:1">
             </div>
             <div class="pl-body" id="plRawBody">
               <div class="empty" style="padding:24px"><p>Data is loading…</p></div>
@@ -801,35 +975,31 @@ const S = {
   es: null,
   results: null,
   charts: {},
+  demoMode: false,
 };
 
 /* ── Init ───────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
-  loadConfigSummary('bgl');
+document.addEventListener('DOMContentLoaded', async () => {
   pollStatus();
   loadLogs();
   refreshDbStatus();
-  initDemoMode();
+  await initDemoMode();        // resolve correct dataset before loading pipeline data
+  loadConfigSummary(S.dataset);
+  initWelcome();
+  plLoad();                    // called exactly once with the correct dataset
 });
 
 async function initDemoMode() {
   try {
     const d = await fetch('/api/info').then(r => r.json());
     if (!d.demo_mode) return;
-
-    // Banner
-    const banner = document.createElement('div');
-    banner.style.cssText =
-      'background:#1e3a5f;color:#93c5fd;padding:7px 20px;font-size:12px;' +
-      'text-align:center;letter-spacing:.03em;position:sticky;top:0;z-index:100;';
-    banner.innerHTML =
-      '<strong>Demo Mode</strong> — Pre-computed results for BGL, HDFS &amp; OpenStack. ' +
-      'Live inference is enabled (OpenStack). Training and model conversion are disabled.';
-    document.body.insertBefore(banner, document.body.firstChild);
-
-    // Pre-load results in the background so they appear instantly when the
-    // user navigates to the Results tab — but stay on the Pipeline tab.
-    setTimeout(() => loadResults(S.dataset), 300);
+    S.demoMode = true;
+    // Set OS as default — update state and UI without triggering plLoad early
+    S.dataset = 'os';
+    document.querySelectorAll('.ds-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('ds-os');
+    if (btn) btn.classList.add('active');
+    updatePipelineBanner();
   } catch {}
 }
 
@@ -841,6 +1011,12 @@ function setDataset(ds, btn) {
   closeRawPredict();
   loadConfigSummary(ds);
   updatePipelineBanner();
+
+  const notice = document.getElementById('demoDatasetNotice');
+  if (notice) notice.style.display = 'none';
+  const runBtn = document.getElementById('runBtn');
+  if (runBtn) runBtn.disabled = false;
+
   if (document.getElementById('pane-pipeline').classList.contains('active')) plLoad();
 }
 
@@ -1553,9 +1729,15 @@ function plRawDeb(){ clearTimeout(_plRawSearchTimer); _plRawSearchTimer=setTimeo
 function setSplit(split, btn) {
   PL.split = split;
   PL.rawPage = 0; PL.sessPage = 0;
+  PL.labelFilter = '';
   closeRawPredict();
   document.querySelectorAll('#plSplitGroup .pill-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  document.querySelectorAll('#plLabelGroup .pill-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('plLabelAll').classList.add('active');
+  // Train split has no anomalies — hide the Anomaly filter to prevent empty loads
+  const anomBtn = document.getElementById('plLabelAnom');
+  if (anomBtn) anomBtn.style.display = (split === 'train') ? 'none' : '';
   plLoad();
 }
 
@@ -1567,6 +1749,14 @@ function setLabelFilter(lbl, btn) {
   plRenderExec(0);
 }
 
+function setRawFilter(lbl, btn) {
+  PL.labelFilter = lbl;
+  PL.rawPage = 0;
+  document.querySelectorAll('#plLabelGroup .pill-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  plLoadRaw(0);
+}
+
 async function plLoad() {
   await Promise.all([plLoadRaw(0), plLoadSessions(0), plLoadResults()]);
 }
@@ -1575,7 +1765,7 @@ async function plLoad() {
 async function plLoadRaw(page) {
   PL.rawPage = Math.max(0, page);
   const search = encodeURIComponent((document.getElementById('plRawSearch')?.value||'').trim());
-  const url    = `/api/pipeline/raw-logs?dataset=${S.dataset}&split=${PL.split}&page=${PL.rawPage}&per_page=${PL.rawPerPage}&search=${search}`;
+  const url    = `/api/pipeline/raw-logs?dataset=${S.dataset}&split=${PL.split}&page=${PL.rawPage}&per_page=${PL.rawPerPage}&search=${search}&label=${PL.labelFilter}`;
 
   // Update subtitle
   const body = document.getElementById('plRawBody');
@@ -1592,7 +1782,7 @@ async function plLoadRaw(page) {
         const isAnom = (r.label==='1'||r.label===1);
         const lvlClr = lvlColor[(r.level||'').toUpperCase()]||'var(--muted)';
         // Encode content for data attribute — no quotes, no newlines
-        const safeContent = (r.content||'').substring(0, 200).replace(/"/g,'&quot;');
+        const safeContent = (r.content||'').substring(0, 600).replace(/"/g,'&quot;');
         const safeBid     = (r.block_id||'').replace(/"/g,'&quot;');
         return `<div class="pl-row${isAnom?' anom-row':''}"
             data-line="${r.line_number}" data-bid="${safeBid}" data-content="${safeContent}"
@@ -1649,16 +1839,55 @@ async function plLoadSessions(page) {
 /* ── Raw-log click → predict ──────────────────────────── */
 let _rawPredictCtrl = null;
 
-function selectRawLog(el) {
+const _PRED_STAGES = [
+  {id:'edge',    icon:'⚡', label:'Edge AI',  sub:'Q-BAT scan'},
+  {id:'routing', icon:'🔀', label:'Routing',  sub:'Uncertainty check'},
+  {id:'cloud',   icon:'☁️', label:'Cloud AI', sub:'BAT ensemble'},
+  {id:'result',  icon:'✅', label:'Result',   sub:'Prediction'},
+];
+
+function _predPipeHtml(activeId, allDone = false) {
+  const ai = _PRED_STAGES.findIndex(s => s.id === activeId);
+  return '<div class="pred-pipe">' +
+    _PRED_STAGES.map((s, i) => {
+      const done   = allDone || i < ai;
+      const active = !allDone && i === ai;
+      const cls = done ? 'pp-done' : active ? 'pp-active' : '';
+      const ico = done ? '✓' : s.icon;
+      const sub = active ? 'running…' : done ? 'done' : s.sub;
+      return `<div class="pred-pipe-step ${cls}">
+        <span class="pp-ico">${ico}</span>
+        <span class="pp-lbl">${s.label}</span>
+        <span class="pp-sub">${sub}</span>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+function _setPbStage(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('pb-active', 'pb-done');
+  if (state === 'active') el.classList.add('pb-active');
+  if (state === 'done')   el.classList.add('pb-done');
+}
+
+function _setStgStage(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('active', 'done');
+  if (state === 'active') el.classList.add('active');
+  if (state === 'done')   el.classList.add('done');
+}
+
+async function selectRawLog(el) {
+  const _t0    = Date.now();
   const lineNum = parseInt(el.dataset.line);
   const blockId = el.dataset.bid  || '';
   const content = el.dataset.content || '';
 
-  // Highlight clicked row
   document.querySelectorAll('#plRawBody .pl-row').forEach(r => r.classList.remove('sel'));
   el.classList.add('sel');
 
-  // Show panel immediately with the clicked log content
   const panel  = document.getElementById('rawPredictPanel');
   const logDiv = document.getElementById('rppLog');
   const result = document.getElementById('rppResult');
@@ -1666,34 +1895,90 @@ function selectRawLog(el) {
   const badge  = document.getElementById('rppBadge');
 
   panel.style.display = 'block';
-  meta.textContent    = `L${lineNum} · looking up session…`;
+  meta.textContent    = `L${lineNum} · running pipeline…`;
   badge.innerHTML     = '';
   logDiv.textContent  = content;
-  result.innerHTML    = '<div style="color:var(--muted);font-size:11px">Running prediction…</div>';
 
-  // Abort any previous in-flight request
-  if (_rawPredictCtrl) { _rawPredictCtrl.abort(); }
+  if (_rawPredictCtrl) _rawPredictCtrl.abort();
   _rawPredictCtrl = new AbortController();
+
+  // ── Reset pipeline flowchart stages ──
+  ['pb-raw','pb-parse','pb-sessions'].forEach(id => _setPbStage(id, 'done'));
+  ['pb-edge','pb-routing','pb-cloud','pb-result'].forEach(id => _setPbStage(id, ''));
+
+  // ── Show live card (only when no full run is in progress) ──
+  const liveCard = document.getElementById('liveCard');
+  if (!S.running && liveCard) {
+    liveCard.style.display = 'block';
+    ['stg-edge','stg-routing','stg-cloud','stg-done'].forEach(id => _setStgStage(id, ''));
+  }
+
+  // ── Stage 1: Edge AI ──
+  _setPbStage('pb-edge', 'active');
+  if (!S.running) {
+    _setStgStage('stg-edge', 'active');
+    setFriendlyStatus('⚡', 'Edge AI scan', 'Scaling events and scoring with Q-BAT edge models.');
+    document.getElementById('opLine').textContent = 'Edge scan: scaling events and scoring session…';
+  }
+  result.innerHTML = _predPipeHtml('edge') +
+    '<div style="color:var(--muted);font-size:11px;text-align:center">Edge AI scanning…</div>';
+
+  await new Promise(r => setTimeout(r, 700));
+
+  // ── Stage 2: Routing ──
+  _setPbStage('pb-edge', 'done');   _setPbStage('pb-routing', 'active');
+  if (!S.running) {
+    _setStgStage('stg-edge', 'done'); _setStgStage('stg-routing', 'active');
+    setFriendlyStatus('🔀', 'Routing decision', 'Evaluating uncertainty — deciding if cloud re-analysis is needed.');
+    document.getElementById('opLine').textContent = 'Routing: evaluating uncertainty threshold…';
+  }
+  result.innerHTML = _predPipeHtml('routing') +
+    '<div style="color:var(--muted);font-size:11px;text-align:center">Routing: checking uncertainty…</div>';
+
+  await new Promise(r => setTimeout(r, 500));
+
+  // ── Stage 3: Cloud AI — fire API call now ──
+  _setPbStage('pb-routing', 'done'); _setPbStage('pb-cloud', 'active');
+  if (!S.running) {
+    _setStgStage('stg-routing', 'done'); _setStgStage('stg-cloud', 'active');
+    setFriendlyStatus('☁️', 'Cloud AI analysis', 'BAT ensemble running deep re-analysis on the session.');
+    document.getElementById('opLine').textContent = 'Cloud: running BAT ensemble models…';
+  }
+  result.innerHTML = _predPipeHtml('cloud') +
+    '<div style="color:var(--muted);font-size:11px;text-align:center">Cloud AI analysing…</div>';
 
   const url = `/api/predict/from-raw?dataset=${S.dataset}&split=${PL.split}`
             + `&line_number=${lineNum}&block_id=${encodeURIComponent(blockId)}`;
+  try {
+    const d = await fetch(url, {signal: _rawPredictCtrl.signal}).then(r => r.json());
+    _rawPredictCtrl = null;
 
-  fetch(url, { signal: _rawPredictCtrl.signal })
-    .then(r => r.json())
-    .then(d => {
-      _rawPredictCtrl = null;
-      if (d.error) {
-        meta.textContent = `L${lineNum}`;
-        result.innerHTML = `<div style="color:var(--red);font-size:11px">${esc(d.error)}</div>`;
-        return;
-      }
-      _renderRawPredictResult(d, lineNum, meta, badge, result);
-    })
-    .catch(e => {
-      if (e.name !== 'AbortError') {
-        result.innerHTML = `<div style="color:var(--red);font-size:11px">Error: ${esc(e.message)}</div>`;
-      }
-    });
+    if (d.error) {
+      ['pb-edge','pb-routing','pb-cloud'].forEach(id => _setPbStage(id, ''));
+      if (!S.running && liveCard) liveCard.style.display = 'none';
+      meta.textContent = `L${lineNum}`;
+      result.innerHTML = `<div style="color:var(--red);font-size:11px">${esc(d.error)}</div>`;
+      return;
+    }
+
+    // ── Stage 4: Result ──
+    d.elapsed_s = ((Date.now() - _t0) / 1000).toFixed(1);
+    _setPbStage('pb-cloud', 'done'); _setPbStage('pb-result', 'done');
+    if (!S.running) {
+      _setStgStage('stg-cloud', 'done'); _setStgStage('stg-done', 'done');
+      const lbl = d.prediction === 1 ? 'ANOMALY' : 'NORMAL';
+      setFriendlyStatus('✅', 'Prediction complete',
+        `L${lineNum} classified as ${lbl} · ${d.elapsed_s}s`);
+    }
+    _renderRawPredictResult(d, lineNum, meta, badge, result);
+
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      ['pb-edge','pb-routing','pb-cloud'].forEach(id => _setPbStage(id, ''));
+      if (!S.running && liveCard) liveCard.style.display = 'none';
+      result.innerHTML = `<div style="color:var(--red);font-size:11px">Error: ${esc(e.message)}</div>`;
+    }
+  }
 }
 
 function _renderRawPredictResult(d, lineNum, meta, badge, result) {
@@ -1702,59 +1987,88 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
   const hasGT   = d.ground_truth !== null && d.ground_truth !== undefined;
   const correct = hasGT && d.prediction === d.ground_truth;
 
-  meta.textContent = `L${lineNum} → session #${d.window_index} · ${d.n_models} model${d.n_models!==1?'s':''} · ${d.elapsed_s}s`;
+  meta.textContent = `L${lineNum} · ${d.elapsed_s}s`;
   badge.innerHTML  = `<span class="pr-badge ${isAnom?'anom':'norm'}">${d.label}</span>`;
 
-  const votePct = d.n_models > 0 ? (d.n_anomaly_votes / d.n_models * 100).toFixed(0) : 0;
+  function voteBar(nAnom, nTotal, col) {
+    const pct = nTotal > 0 ? (nAnom / nTotal * 100).toFixed(0) : 0;
+    return `<div class="bar-track" style="margin:2px 0"><div class="bar-fill"
+      style="width:${pct}%;background:${col}"></div></div>
+      <div style="font-size:9px;color:var(--muted)">${nAnom}/${nTotal} anomaly votes (${pct}%)</div>`;
+  }
 
-  result.innerHTML = `<div class="sess-result-panel">
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-      <div>
-        <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Prediction</div>
-        <span class="pr-badge ${isAnom?'anom':'norm'}" style="font-size:11px">${d.label}</span>
-      </div>
-      ${hasGT ? `<div>
-        <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Ground Truth</div>
-        <span class="pr-badge ${gtAnom?'anom':'norm'}" style="font-size:11px">${gtAnom?'ANOMALY':'NORMAL'}</span>
-      </div>
-      <div style="font-size:14px;font-weight:700;color:${correct?'var(--green)':'var(--red)'}">
-        ${correct?'✓ Correct':'✗ Wrong'}
-      </div>` : ''}
-    </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:7px">
-      Live BAT inference · session #${d.window_index}
-      ${d.padded ? ` · padded to ${d.win_size} events` : ` · ${d.n_events} events`}
-    </div>
-    <div class="pred-kpi-row">
-      <div class="pred-kpi">
-        <div class="pk-n" style="color:var(--red)">${d.n_anomaly_votes}</div>
-        <div class="pk-l">anomaly votes</div>
-      </div>
-      <div class="pred-kpi">
-        <div class="pk-n" style="color:var(--green)">${d.n_normal_votes}</div>
-        <div class="pk-l">normal votes</div>
-      </div>
-      <div class="pred-kpi">
-        <div class="pk-n" style="color:var(--blue)">${d.n_models}</div>
-        <div class="pk-l">total</div>
-      </div>
-      <div style="flex:1;padding:4px 0">
-        <div style="font-size:9px;color:var(--muted);margin-bottom:3px">Anomaly vote share</div>
-        <div class="bar-track"><div class="bar-fill"
-          style="width:${votePct}%;background:${isAnom?'var(--red)':'var(--green)'}"></div></div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${votePct}%</div>
-      </div>
-    </div>
-    ${d.model_results?.length ? `<details><summary style="font-size:10px;color:var(--muted);cursor:pointer">
-        Per-model breakdown (${d.model_results.length})</summary>
-      <div style="max-height:100px;overflow-y:auto;margin-top:4px;border:1px solid var(--border);border-radius:5px">
-      ${d.model_results.map(m=>`<div class="pred-model-row"
+  function modelBreakdown(models, label) {
+    if (!models?.length) return '';
+    return `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--muted);cursor:pointer">
+        ${label} per-model breakdown (${models.length})</summary>
+      <div style="max-height:90px;overflow-y:auto;margin-top:4px;border:1px solid var(--border);border-radius:5px">
+      ${models.map(m=>`<div class="pred-model-row"
           style="background:${m.vote?'rgba(220,38,38,.05)':'rgba(22,163,74,.05)'}">
-          <span style="color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis">${m.model}</span>
+          <span style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis">${m.model}</span>
           <span style="color:var(--muted)">${m.energy.toFixed(5)} / ${m.threshold.toFixed(5)}</span>
           <span style="font-weight:700;color:${m.vote?'var(--red)':'var(--green)'}">${m.vote?'ANOM':'NORM'}</span>
         </div>`).join('')}
-      </div></details>` : ''}
+      </div></details>`;
+  }
+
+  const edge    = d.edge    || {};
+  const routing = d.routing || {};
+  const cloud   = d.cloud   || d;
+
+  const edgeN       = edge.n_models  ?? d.n_models ?? 1;
+  const cloudN      = cloud.n_models ?? d.n_models ?? 1;
+  const edgeIsAnom  = (edge.prediction ?? 0) === 1;
+  const cloudIsAnom = (cloud.prediction ?? d.prediction) === 1;
+  const routed      = routing.routed ?? true;
+
+  result.innerHTML = _predPipeHtml('result', true) + `
+  <div class="sess-result-panel">
+    <!-- Final result header -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Final Prediction</div>
+        <span class="pr-badge ${isAnom?'anom':'norm'}" style="font-size:12px">${d.label}</span>
+      </div>
+      ${hasGT ? `<div>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Ground Truth</div>
+        <span class="pr-badge ${gtAnom?'anom':'norm'}" style="font-size:12px">${gtAnom?'ANOMALY':'NORMAL'}</span>
+      </div>
+      <div style="font-size:15px;font-weight:700;color:${correct?'var(--green)':'var(--red)'}">
+        ${correct?'✓ Correct':'✗ Wrong'}
+      </div>` : ''}
+      <div style="font-size:10px;color:var(--muted);margin-left:auto">
+        ${d.elapsed_s}s
+      </div>
+    </div>
+
+    <!-- Stage breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+
+      <!-- Edge AI -->
+      <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge AI (${edgeN>1?edgeN+' Q-BAT models':'Q-BAT'})</div>
+        <span class="pr-badge ${edgeIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${edgeIsAnom?'ANOMALY':'NORMAL'}</span>
+        ${edgeN>1?voteBar(edge.n_anomaly_votes??0, edgeN, edgeIsAnom?'var(--red)':'var(--green)'):''}
+        ${modelBreakdown(edge.model_results, 'Edge')}
+      </div>
+
+      <!-- Routing -->
+      <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
+        <div style="font-size:10px;font-weight:700;color:${routed?'var(--amber)':'var(--green)'};margin-bottom:5px">🔀 Routing</div>
+        <div style="font-size:11px;font-weight:700;color:${routed?'var(--amber)':'var(--muted)'}">
+          ${routed?'→ Routed to Cloud':'→ Edge result trusted'}
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:3px">${routing.reason??''}</div>
+      </div>
+    </div>
+
+    <!-- Cloud AI -->
+    <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
+      <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud AI (${cloudN>1?cloudN+' BAT models':'BAT ensemble'})</div>
+      <span class="pr-badge ${cloudIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${cloudIsAnom?'ANOMALY':'NORMAL'}</span>
+      ${cloudN>1?voteBar(cloud.n_anomaly_votes??d.n_anomaly_votes, cloudN, cloudIsAnom?'var(--red)':'var(--green)'):''}
+      ${modelBreakdown(cloud.model_results, 'Cloud')}
+    </div>
   </div>`;
 }
 
@@ -1763,6 +2077,13 @@ function closeRawPredict() {
   if (panel) panel.style.display = 'none';
   if (_rawPredictCtrl) { _rawPredictCtrl.abort(); _rawPredictCtrl = null; }
   document.querySelectorAll('#plRawBody .pl-row').forEach(r => r.classList.remove('sel'));
+  // Reset pipeline flowchart stages
+  ['pb-raw','pb-parse','pb-sessions','pb-edge','pb-routing','pb-cloud','pb-result']
+    .forEach(id => { const e = document.getElementById(id); if (e) e.classList.remove('pb-active','pb-done'); });
+  if (!S.running) {
+    const liveCard = document.getElementById('liveCard');
+    if (liveCard) liveCard.style.display = 'none';
+  }
 }
 
 /* Results column removed from Pipeline view — data is in the Results tab */
@@ -1810,6 +2131,116 @@ function closeWinModal(event) {
 
 /* ── Raw Logs standalone tab (kept for BGL/HDFS) ───── */
 // (Accessible via pipeline tab; BGL/HDFS available via api/db/raw-logs)
+
+/* ── Guided Tour ────────────────────────────────────────── */
+const TOUR_STEPS = [
+  { title: '① Choose a Dataset',
+    desc: 'Pick the system logs to analyse. <strong>BGL</strong>, <strong>HDFS</strong>, and <strong>OpenStack</strong> are all live in this demo.',
+    target: '.ds-grid', pad: 10, pos: 'right' },
+  { title: '② Start the Analysis',
+    desc: 'Click <strong style="color:#16a34a">▶ Start Analysis</strong> to run the full four-stage pipeline — Edge AI, Routing, and Cloud AI — end-to-end.',
+    target: '#runBtn', pad: 8, pos: 'right' },
+  { title: '③ Watch the Pipeline Tab',
+    desc: 'Switch here to see raw log messages, parsed sessions, and live stage-by-stage progress as each AI stage completes.',
+    target: '.tab[data-tab="pipeline"]', pad: 6, pos: 'bottom' },
+  { title: '④ Explore Results & Analysis',
+    desc: 'The <strong>Results</strong> tab shows F1 / Precision / Recall charts. <strong>Analysis</strong> shows energy efficiency scores and routing decisions per session.',
+    target: '.tab[data-tab="results"]', pad: 6, pos: 'bottom' },
+  { title: '⑤ Predict a Single Log Line',
+    desc: 'In the <strong>Pipeline</strong> tab, click any raw log row to instantly run the full Edge → Routing → Cloud pipeline on just that one log. The verdict appears inline.',
+    target: '.tab[data-tab="pipeline"]', pad: 6, pos: 'bottom', isLast: true },
+];
+
+let _tourStep = -1; // -1 = intro card
+
+function initWelcome() {
+  if (!localStorage.getItem('ceco_welcomed')) showWelcome();
+}
+function showWelcome() {
+  _tourStep = -1;
+  _renderTourStep();
+}
+function _renderTourStep() {
+  const intro = document.getElementById('tourIntroOverlay');
+  const hl    = document.getElementById('tourHighlight');
+  const tt    = document.getElementById('tourTooltip');
+  if (_tourStep === -1) {
+    intro.classList.remove('hidden');
+    hl.classList.add('hidden');
+    tt.classList.add('hidden');
+    document.getElementById('welcomeDontShow').checked = !!localStorage.getItem('ceco_welcomed');
+    return;
+  }
+  intro.classList.add('hidden');
+  const step = TOUR_STEPS[_tourStep];
+  const el   = document.querySelector(step.target);
+  if (!el) { tourNext(); return; }
+  el.scrollIntoView({behavior:'smooth', block:'nearest'});
+  const pad = step.pad || 6;
+  const r   = el.getBoundingClientRect();
+  Object.assign(hl.style, {
+    top:(r.top-pad)+'px', left:(r.left-pad)+'px',
+    width:(r.width+pad*2)+'px', height:(r.height+pad*2)+'px'
+  });
+  hl.classList.remove('hidden');
+  document.getElementById('tourBadge').textContent = 'Step '+(_tourStep+1)+' of '+TOUR_STEPS.length;
+  document.getElementById('tourTitle').textContent  = step.title;
+  document.getElementById('tourDesc').innerHTML     = step.desc;
+  document.getElementById('tourPrevBtn').style.visibility = _tourStep > 0 ? 'visible' : 'hidden';
+  const nb = document.getElementById('tourNextBtn');
+  nb.textContent = step.isLast ? 'Finish ✓' : 'Next →';
+  document.getElementById('tourDots').innerHTML = TOUR_STEPS.map((_,i)=>
+    '<div class="tour-dot'+(_tourStep===i?' active':'')+'"></div>'
+  ).join('');
+  tt.classList.remove('hidden');
+  requestAnimationFrame(()=>_posTooltip(r, pad, step.pos));
+}
+function _posTooltip(r, pad, pos) {
+  const tt = document.getElementById('tourTooltip');
+  const tw = tt.offsetWidth, th = tt.offsetHeight;
+  const gap = 14, m = 10;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let top, left;
+  if (pos === 'right') {
+    left = r.right + pad + gap;
+    top  = r.top + r.height/2 - th/2;
+    if (left + tw > vw - m) left = r.left - pad - gap - tw;
+  } else if (pos === 'bottom') {
+    top  = r.bottom + pad + gap;
+    left = r.left + r.width/2 - tw/2;
+    if (top + th > vh - m) top = r.top - pad - gap - th;
+  } else {
+    top  = r.top - pad - gap - th;
+    left = r.left + r.width/2 - tw/2;
+    if (top < m) top = r.bottom + pad + gap;
+  }
+  top  = Math.max(m, Math.min(top,  vh - th - m));
+  left = Math.max(m, Math.min(left, vw - tw - m));
+  tt.style.top  = top+'px';
+  tt.style.left = left+'px';
+}
+function tourNext() {
+  if (_tourStep === -1) _tourStep = 0;
+  else if (_tourStep >= TOUR_STEPS.length - 1) { closeTour(); return; }
+  else _tourStep++;
+  _renderTourStep();
+}
+function tourPrev() {
+  if (_tourStep <= 0) _tourStep = -1;
+  else _tourStep--;
+  _renderTourStep();
+}
+function closeTour() {
+  if ((document.getElementById('welcomeDontShow')||{}).checked)
+    localStorage.setItem('ceco_welcomed','1');
+  document.getElementById('tourIntroOverlay').classList.add('hidden');
+  document.getElementById('tourHighlight').classList.add('hidden');
+  document.getElementById('tourTooltip').classList.add('hidden');
+}
+function tourClickOutside(e) {
+  if (e.target === document.getElementById('tourIntroOverlay')) closeTour();
+}
+window.addEventListener('resize', ()=>{ if (_tourStep >= 0) _renderTourStep(); });
 
 /* ── Helpers ────────────────────────────────────────── */
 function pct(v)  { return v!==undefined?(v*100).toFixed(2)+'%':'—'; }

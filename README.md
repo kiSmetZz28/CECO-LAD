@@ -21,11 +21,11 @@ short_description: Cloud-Edge Collaborative Log Anomaly Detection demo
 
 ## What This Project Does
 
-CECO-LAD automatically finds problems in system logs using a two-tier AI approach:
+CECO-LAD automatically detects anomalies in system logs using a two-tier AI approach:
 
-- All **Q-BAT edge models** run locally on every session in parallel — no GPU or internet needed.
-- Only the **uncertain cases** are forwarded to the **BAT cloud ensemble**, where all checkpoints run simultaneously for a second opinion.
-- The final prediction combines both, delivering **cloud-level accuracy at near-edge speed**.
+- **Q-BAT edge models** run locally on every log line in parallel — no GPU or internet needed.
+- Only the **most uncertain lines** are forwarded to the **BAT cloud ensemble**, where 81 checkpoints re-score them.
+- The final prediction combines both tiers, delivering **cloud-level accuracy at near-edge speed**.
 
 <p align="center">
   <img src="pictures/framework.png" width="700">
@@ -64,7 +64,9 @@ CECO-LAD automatically finds problems in system logs using a two-tier AI approac
 | Disk | 10 GB free | 30 GB free |
 | GPU | Not required | NVIDIA GPU with CUDA 12.4 (speeds up training ~10×) |
 
-> **A GPU is only needed for training (Step 5).** All other steps — evaluation, inference, and the dashboard — run on CPU.
+> **A GPU is only needed for training (Step 5).** Evaluation, inference, and the dashboard all run on CPU.
+
+> **Disk note:** Downloading BAT checkpoints requires ~3.5 GB per dataset (up to ~10.5 GB for all three). Q-BAT edge checkpoints are ~220 MB total.
 
 ### Operating System
 
@@ -100,11 +102,11 @@ Verify: `git --version`
 
 ## Quick Start — Dashboard
 
-The dashboard lets you explore the data pipeline, view pre-computed results, and run new inference — all from your browser. The processed dataset files are already included in this repository, so no extra data download is required.
+The dashboard lets you explore the data pipeline, view pre-computed results, and run new inference — all from your browser. The processed dataset files are already included in this repository.
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url> CECO-LAD
+git clone https://github.com/<your-org>/CECO-LAD.git CECO-LAD
 cd CECO-LAD
 
 # 2. Create the Python environment
@@ -120,9 +122,10 @@ python dashboard/app.py
 
 Open **http://localhost:8765** in your browser.
 
-The dashboard automatically imports log data into a local database on first launch. The **Database** indicator in the sidebar shows the progress — once it says **Ready**, all data is fully browsable in the **Pipeline** tab.
+**What you'll see on first launch:**
 
-Pre-computed inference results for OpenStack are also included, so the **Results** and **Analysis** tabs are populated immediately without running inference.
+- The **Database** indicator in the sidebar will show **Loading** while log data is imported into a local database. Once it says **Ready**, all data is browsable in the **Pipeline** tab.
+- Pre-computed inference results for OpenStack are included, so the **Results** and **Analysis** tabs are populated immediately.
 
 > **To run new inference from the dashboard**, complete the Full Setup below first (models must be downloaded or trained, and ExecuTorch must be installed in the `ceco-lad` environment).
 
@@ -132,14 +135,29 @@ Pre-computed inference results for OpenStack are also included, so the **Results
 
 All commands are run from the **project root** (`CECO-LAD/`).
 
-The project uses two Conda environments:
+### Two environments
 
-| Environment | Used for |
-|-------------|----------|
-| `ceco-lad` | Training, evaluation, dashboard, edge inference (requires ExecuTorch) |
-| `hybrid` | Cloud GPU inference (optional — only needed if running cloud re-check) |
+The project uses two Conda environments, one for each inference tier:
 
-> These names match the defaults in `dashboard/app.py`. If you use different names, update `EDGE_PYTHON` and `CLOUD_PYTHON` at the top of `dashboard/app.py`.
+| Environment | Purpose |
+|-------------|---------|
+| `ceco-lad` | Training, evaluation, dashboard, and edge inference (requires ExecuTorch) |
+| `hybrid` | Cloud BAT inference — runs 81 checkpoints for the re-check phase |
+
+> These names match the defaults in `dashboard/app.py`. If you use different names, update `EDGE_PYTHON` and `CLOUD_PYTHON` at the top of that file.
+
+### Step dependencies at a glance
+
+```
+Step 1 (environments)
+  └─▶ Step 2 (download models)
+        └─▶ Step 3 (generate thresholds)
+              └─▶ Step 4 (run inference)
+
+Optional paths:
+  Step 5 (train from scratch) ─▶ Step 3 ─▶ Step 4
+  Step 6 (convert to edge)    ─▶ Step 4
+```
 
 ---
 
@@ -174,13 +192,13 @@ ExecuTorch is required to run Q-BAT models locally. Install it into the `ceco-la
 > **Linux and macOS only.** Windows users: use WSL2.
 
 ```bash
-# Clone ExecuTorch into the project (one-time setup)
+# Clone ExecuTorch into the project (one-time setup, ~5 minutes to clone)
 cd inference_pipeline
 git clone --branch release/0.5 https://github.com/pytorch/executorch.git
 cd executorch
 git submodule sync && git submodule update --init
 
-# Install ExecuTorch into ceco-lad (takes 5–15 minutes)
+# Install ExecuTorch into ceco-lad (takes 5–15 minutes to build)
 conda activate ceco-lad
 python install_requirements.py
 
@@ -194,9 +212,9 @@ pip install -r environment/edge/requirements.txt
 python -c "from executorch.runtime import Runtime; print('ExecuTorch OK')"
 ```
 
-#### Cloud GPU environment (`hybrid`, optional)
+#### Cloud environment (`hybrid`)
 
-Only needed if running the cloud re-check phase of inference on a GPU machine.
+Required for the cloud re-check phase of inference.
 
 ```bash
 conda create -yn hybrid python=3.10.0
@@ -206,33 +224,51 @@ pip install -r environment/cloud/requirements.txt \
 pip install -e .
 ```
 
+**Verify:**
+```bash
+conda env list   # should show both 'ceco-lad' and 'hybrid'
+```
+
 ---
 
 ### Step 2 — Download pre-trained models
 
-The processed dataset files (`data/`) are already in this repository. You only need to download the model checkpoints.
+> **Requires:** Step 1 complete.
+> **Disk space:** ~3.5 GB per dataset for BAT checkpoints; ~220 MB total for Q-BAT edge models.
 
 ```bash
 conda activate ceco-lad
 
-# Download all datasets at once
+# Download checkpoints for all three datasets at once
 python run.py download
 
 # Or download one dataset at a time
 python run.py download os
 python run.py download bgl
 python run.py download hdfs
+
+# Download only the quantized edge models (smaller, ~220 MB total)
+python run.py download os qbat
 ```
 
 This saves:
-- `.pth` files (full-precision BAT models) → `checkpoints/bat/{dataset}/`
-- `.pte` files (quantized Q-BAT models) → `checkpoints/qbat/{dataset}/`
+- `.pth` files (full-precision BAT cloud models) → `checkpoints/bat/{dataset}/`
+- `.pte` files (quantized Q-BAT edge models) → `checkpoints/qbat/{dataset}/`
+
+**Verify:**
+```bash
+ls checkpoints/bat/os/   # should list 81 .pth files
+ls checkpoints/qbat/os/  # should list 3 .pte files
+```
 
 ---
 
 ### Step 3 — Generate detection thresholds
 
-This step evaluates the BAT ensemble on the training set to compute per-model anomaly thresholds. **This must be run before inference** — the threshold files are required by Step 4.
+> **Requires:** Step 2 complete (BAT checkpoints must exist).
+> **Must be run before inference.**
+
+This step evaluates the BAT ensemble on the test set to compute per-model anomaly thresholds.
 
 ```bash
 conda activate ceco-lad
@@ -243,19 +279,25 @@ python run.py eval hdfs
 ```
 
 **What it does:**
-1. Loads all downloaded BAT checkpoints for the dataset
+1. Loads all 81 downloaded BAT checkpoints for the dataset
 2. Runs each model on the test set to compute anomaly energy scores
-3. Fits a Gaussian mixture model (GMM) on the training energy distribution
-4. Sets the threshold at the boundary of the normal cluster
+3. Fits a 7-component Gaussian Mixture Model (GMM) on the energy distribution
+4. Sets the detection threshold at the boundary of the normal cluster
 5. Writes `outputs/{dataset}/thresholds_cloud.yaml`
 
-**Output:** Prints accuracy, precision, recall, and F-score for three voting strategies — `majority`, `at-least-one`, and `consensus`.
+**Verify:**
+```bash
+cat outputs/os/thresholds_cloud.yaml   # should show per-model threshold values
+```
 
 ---
 
 ### Step 4 — Run inference
 
-Runs the full collaborative pipeline from edge scan to final prediction.
+> **Requires:** Steps 1–3 complete (`thresholds_cloud.yaml` must exist and ExecuTorch must be installed).
+> **Expected runtime:** ~5–15 minutes per dataset on CPU.
+
+Runs the full collaborative pipeline: edge scan → routing → cloud re-check → final prediction.
 
 ```bash
 conda activate ceco-lad
@@ -265,55 +307,68 @@ python run.py infer bgl
 python run.py infer hdfs
 ```
 
-**Prerequisite:** `outputs/{dataset}/thresholds_cloud.yaml` must exist (from Step 3).
-
 **The four stages:**
 
 | Stage | What happens |
 |-------|-------------|
-| **Edge scan** | All Q-BAT models score every test session **simultaneously** (one thread per model) |
-| **Routing** | The most uncertain sessions (10% by default) are identified via Mahalanobis distance and forwarded to the cloud |
-| **Cloud re-check** | All BAT checkpoints re-score the routed sessions **simultaneously** (thread pool, separate CUDA stream per worker) |
-| **Merge** | Edge and cloud predictions are combined; final metrics are printed |
+| **Edge scan** | All Q-BAT models score every test log line simultaneously (one thread per model) |
+| **Routing** | Per-line energy scores select the most uncertain 10% of lines via Mahalanobis distance; their feature vectors are saved for cloud processing |
+| **Cloud re-check** | Routed lines are reshaped into windows and scored by all 81 BAT checkpoints simultaneously |
+| **Merge** | Cloud predictions replace edge predictions at routed positions; final point-adjusted metrics are printed |
+
+**Running only the cloud phase** (if you already have edge outputs):
+
+```bash
+conda activate hybrid
+python dashboard/cloud_runner.py --config configs/inference/os.yaml
+```
 
 **Output files** written to `outputs/{dataset}/`:
 
 | File | Contents |
 |------|----------|
 | `ground_truth.npy` | True labels — `[N]` binary array |
-| `edge_preds.npy` | Edge AI predictions — `[N]` binary array |
-| `hybrid_preds.npy` | Final merged predictions — `[N]` binary array |
-| `energy_matrix.npy` | Per-model anomaly energy scores — `[N, 3]` |
-| `routed_indices.npy` | Indices of sessions forwarded to the cloud |
+| `edge_preds.npy` | Point-adjusted edge predictions — `[N]` binary array |
+| `edge_preds_raw.npy` | Raw (non-adjusted) edge predictions — `[N]` binary array |
+| `hybrid_preds.npy` | Point-adjusted final predictions — `[N]` binary array |
+| `energy_matrix.npy` | Per-model energy scores — `[N, n_edge_models]` |
+| `routed_indices.npy` | Line indices forwarded to cloud |
+| `routed_lines.npy` | Feature vectors of routed lines — `[N_routed, input_c]` |
+| `cloud_preds.npy` | Cloud predictions for routed lines |
 | `thresholds_edge.yaml` | Per-model edge detection thresholds |
 | `thresholds_cloud.yaml` | Per-model cloud detection thresholds |
+
+**Verify:**
+```bash
+ls outputs/os/   # should include hybrid_preds.npy and edge_preds.npy
+```
 
 ---
 
 ### Step 5 — (Optional) Train from scratch
 
-Trains a full ensemble of BAT models using a hyperparameter sweep. Requires a GPU and takes 2–8 hours per dataset.
+> **Requires:** Step 1 complete.
+> **Time:** 2–8 hours per dataset. **GPU strongly recommended.**
+
+Trains a full ensemble of 81 BAT models using a hyperparameter sweep.
 
 ```bash
-conda activate ceco-lad   # or hybrid for GPU
+conda activate ceco-lad   # or hybrid for GPU training
 
 python run.py train os
 python run.py train bgl
 python run.py train hdfs
 ```
 
-**What it does:** For each combination of `(num_epochs, k, e_layer_num, batch_size)` defined in `configs/training/{dataset}.yaml`, it bootstraps the training data and trains one EM-AT model. Each run uses a deterministic seed derived from the hyperparameter tuple, making results fully reproducible.
+Each combination of `(num_epochs, k, e_layer_num, batch_size)` from `configs/training/{dataset}.yaml` produces one checkpoint trained on a deterministic bootstrap resample of the training data. Checkpoints are saved to `checkpoints/bat/{dataset}/`.
 
-Checkpoints are saved to `checkpoints/bat/{dataset}/` with filenames like:
-```
-Openstack_e10_k5_l3_b64_checkpoint.pth
-```
-
-After training, run Step 3 to compute thresholds from the new checkpoints.
+After training, run **Step 3** to compute thresholds from the new checkpoints.
 
 ---
 
 ### Step 6 — (Optional) Convert to edge models
+
+> **Requires:** Step 1 complete with ExecuTorch installed, and BAT checkpoints available (Step 2 or Step 5).
 
 Quantizes full-precision BAT checkpoints into lightweight Q-BAT models for edge deployment.
 
@@ -325,9 +380,7 @@ python run.py convert bgl
 python run.py convert hdfs
 ```
 
-**What it does:** Applies A8W4 quantization (8-bit activations, 4-bit weights) to selected BAT checkpoints and exports them as ExecuTorch `.pte` files. These files run on CPU without a GPU.
-
-Output: `checkpoints/qbat/{dataset}/`
+Applies A8W4 quantization (8-bit activations, 4-bit weights) and exports `.pte` files to `checkpoints/qbat/{dataset}/`.
 
 > Skip this step if you downloaded pre-trained Q-BAT checkpoints in Step 2.
 
@@ -339,7 +392,7 @@ Output: `checkpoints/qbat/{dataset}/`
 conda activate ceco-lad
 
 python run.py test
-# or:
+# or equivalently:
 python -m pytest tests/ -v
 ```
 
@@ -360,9 +413,13 @@ python dashboard/app.py
 
 Open **http://localhost:8765**.
 
+> **Note:** On first launch, the dashboard preloads all BAT models into RAM (up to ~3.5 GB per dataset). The **Database** indicator will show **Loading** while log data is imported. Allow 1–2 minutes before all tabs are fully populated.
+
 ### Overview
 
-**Pipeline banner** — a strip at the top showing all 7 stages: Raw Logs → Parse → Sessions → Edge AI → Routing → Cloud AI → Result. Each stage lights up green as data becomes available. Click any stage to jump to the relevant tab.
+A **? Help** button in the top-right corner opens a guided introduction to all dashboard features.
+
+**Pipeline banner** — a strip at the top showing all stages: Raw Logs → Edge AI → Routing → Cloud AI → Result. Each stage lights up as data becomes available.
 
 **Sidebar** — three controls:
 - **Choose Dataset** — select OpenStack, BGL, or HDFS
@@ -373,28 +430,30 @@ Open **http://localhost:8765**.
 
 | Tab | What it shows |
 |-----|---------------|
-| **Pipeline** | Side-by-side view of (1) raw log lines, (2) processed event sequences, and (3) inference predictions. Click any session row to see its source logs and full prediction breakdown. |
-| **Results** | Accuracy, precision, recall, and F-score cards. Includes the anomaly timeline — a pixel strip showing every session coloured by its prediction. |
-| **Analysis** | Per-model anomaly energy curves (used to detect anomalies), and a routing pie chart showing what fraction of sessions went to the cloud. |
-| **System** | Per-model detection thresholds (calibrated during evaluation) and run log files. |
+| **Pipeline** | Side-by-side view of raw log lines and processed event sequences. Filter logs by **All / Normal / Anomaly**. Click any log row to run single-log prediction. |
+| **Results** | Accuracy, precision, recall, and F-score cards with an anomaly timeline strip. |
+| **Analysis** | Per-model anomaly energy curves and cloud routing breakdown. |
+| **System** | Per-model detection thresholds and run log files. |
 
-### Database loading
+### Single-log prediction
 
-On first launch, the dashboard automatically imports the raw log files and processed sessions into a local SQLite database in the background. The **Database** status indicator in the sidebar tracks progress:
+In the **Pipeline** tab, click any raw log row to instantly run the full Edge AI → Routing → Cloud AI pipeline on that single log line. The result panel shows:
 
-- **Importing…** — data is loading (takes 1–5 minutes depending on dataset size)
-- **Ready** — all data is available for browsing
+- **Edge AI** prediction (Q-BAT models)
+- **Routing** decision (was the line uncertain enough to send to cloud?)
+- **Cloud AI** prediction (81 BAT models)
+- **Final verdict** with ground-truth comparison (when available)
 
-The processed session files from `data/OpenStack/`, `data/BGL/`, and `data/HDFS/` load quickly. The raw log files from `~/Desktop/Log Data/` take longer and are optional — if they are not present, the left column of the Pipeline tab will be empty, but sessions and results will still work.
+When a full pipeline run exists for the dataset, predictions are looked up from saved point-adjusted results so they stay consistent with the reported metrics.
 
 ### Running inference from the dashboard
 
-1. Make sure Steps 1–3 are complete (environment with ExecuTorch, downloaded checkpoints, thresholds generated)
+1. Complete Steps 1–3 (environment with ExecuTorch, downloaded checkpoints, thresholds generated)
 2. Select a dataset in the sidebar
 3. Optionally adjust the cloud check rate
 4. Click **Start Analysis**
 
-The console shows live output. The pipeline banner stages highlight as each phase runs. When finished, the Results and Analysis tabs update automatically.
+The console streams live output. The pipeline banner stages highlight as each phase completes.
 
 ---
 
@@ -403,19 +462,19 @@ The console shows live output. The pipeline banner stages highlight as each phas
 ```
 CECO-LAD/
 │
-├── run.py                          # Main entry point: train / eval / convert / infer / test
+├── run.py                          # Main entry point: train / eval / convert / download / infer / test
 ├── run.sh                          # Bash shortcut (Linux/macOS)
 │
 ├── ceco_core/                      # Shared library used by all pipelines
 │   ├── models/
-│   │   ├── EMAT.py                 # EM-AT: Enhanced Anomaly Transformer (base model)
+│   │   ├── EMAT.py                 # Enhanced Anomaly Transformer (base model)
 │   │   ├── attn.py                 # Anomaly attention with Gaussian prior
 │   │   └── embed.py                # Positional and token embeddings
 │   ├── data/
 │   │   ├── preprocessor.py         # Raw log lines → event ID sequences
 │   │   └── loaders.py              # Sliding-window DataLoaders for all three datasets
 │   └── utils/
-│       ├── energy.py               # Attention-weighted anomaly energy scoring
+│       ├── energy.py               # Attention-weighted anomaly energy scoring [B, win_size]
 │       ├── voting.py               # Ensemble voting (majority / at-least-one / consensus)
 │       ├── metrics.py              # Point-adjusted evaluation (standard protocol)
 │       ├── config.py               # YAML config loading and logging setup
@@ -429,17 +488,20 @@ CECO-LAD/
 ├── edge_pipeline/                  # Q-BAT quantization  [ceco-lad env + ExecuTorch]
 │   └── convert.py                  # Converts BAT .pth → quantized ExecuTorch .pte
 │
-├── inference_pipeline/             # Collaborative edge + cloud inference  [ceco-lad env]
-│   ├── run.py                      # Orchestrates all four inference stages
-│   ├── edge_agent.py               # Runs Q-BAT models, computes GMM thresholds
-│   ├── cloud_expert.py             # Runs BAT ensemble on routed sessions
-│   └── routing.py                  # Mahalanobis distance routing
+├── inference_pipeline/             # Collaborative edge + cloud inference
+│   ├── run.py                      # Orchestrates all four stages  [ceco-lad env]
+│   ├── edge_agent.py               # Runs Q-BAT models, saves per-line energy scores
+│   ├── cloud_expert.py             # Runs BAT ensemble on routed lines  [hybrid env]
+│   └── routing.py                  # Mahalanobis distance routing (line-level)
 │
 ├── dashboard/                      # Web dashboard  [ceco-lad env]
-│   ├── app.py                      # FastAPI backend — API endpoints + process control
+│   ├── app.py                      # FastAPI backend — API endpoints + inference control
 │   ├── index.html                  # Frontend — single-page app
 │   ├── db.py                       # SQLite database layer
-│   └── ingest.py                   # Background data import from log files
+│   ├── ingest.py                   # Background data import from log files
+│   ├── cloud_runner.py             # Cloud inference phase — runs in hybrid env
+│   ├── bat_predict.py              # Single-window BAT prediction subprocess
+│   └── demo_runner.py              # Container demo pipeline (HF Spaces, BAT-only)
 │
 ├── configs/
 │   ├── training/
@@ -447,7 +509,7 @@ CECO-LAD/
 │   │   ├── hdfs.yaml               # Hyperparameter sweep config for HDFS
 │   │   └── os.yaml                 # Hyperparameter sweep config for OpenStack
 │   └── inference/
-│       ├── bgl.yaml                # Inference config: Q-BAT + routing settings
+│       ├── bgl.yaml                # Inference config: edge + routing + cloud settings
 │       ├── hdfs.yaml
 │       └── os.yaml
 │
@@ -457,17 +519,21 @@ CECO-LAD/
 │   └── OpenStack/                  # train.txt, test_normal.txt, test_abnormal.txt
 │
 ├── checkpoints/                    # Model weights — downloaded or trained by you
-│   ├── bat/                        # Full-precision BAT checkpoints (.pth)
-│   └── qbat/                       # Quantized Q-BAT checkpoints (.pte)
+│   ├── bat/                        # Full-precision BAT checkpoints (.pth), ~3.5 GB per dataset
+│   └── qbat/                       # Quantized Q-BAT checkpoints (.pte), ~220 MB total
 │
 ├── outputs/                        # Inference results — generated at runtime
 │   ├── bgl/
 │   ├── hdfs/
 │   └── os/                         # Pre-computed results for OpenStack are included
 │
+├── spaces_startup.py               # HF Spaces container startup (downloads assets)
+├── deploy_hf.py                    # Deploys dashboard to Hugging Face Spaces
+├── upload_assets.py                # Uploads checkpoints and logs to HF Hub
+│
 └── environment/
-    ├── cloud/requirements.txt      # Dependencies for training and evaluation
-    └── edge/requirements.txt       # Extra dependencies for ExecuTorch inference
+    ├── cloud/requirements.txt      # Dependencies for training, evaluation, and cloud inference
+    └── edge/requirements.txt       # Extra dependencies for ExecuTorch edge inference
 ```
 
 ---
@@ -479,52 +545,23 @@ CECO-LAD/
 | Model | Where it runs | What it is |
 |-------|--------------|------------|
 | **EM-AT** | Cloud | Enhanced Anomaly Transformer — the base learner, trained with a minimax energy loss |
-| **BAT** | Cloud | Bagging Anomaly Transformer — an ensemble of EM-AT models with varied hyperparameters and bootstrap-resampled training data |
+| **BAT** | Cloud | Bagging Anomaly Transformer — 81 EM-AT models with varied hyperparameters and bootstrap-resampled training data |
 | **Q-BAT** | Edge (CPU) | Selected BAT checkpoints quantized to A8W4 format (8-bit activations, 4-bit weights) via ExecuTorch |
 
 ### Training
 
-The training sweep explores combinations of `(num_epochs, k, e_layer_num, batch_size)` as defined in `configs/training/{dataset}.yaml`. For each combination:
+The training sweep explores all combinations of `(num_epochs, k, e_layer_num, batch_size)` defined in `configs/training/{dataset}.yaml`. For each combination:
 
 1. A deterministic seed is derived from the hyperparameter tuple
 2. A bootstrap resample of the training data is created using that seed
 3. One EM-AT model is trained on the resample
 4. The checkpoint is saved to `checkpoints/bat/{dataset}/`
 
-After training, `run.py eval` loads all checkpoints, computes per-model energy distributions on the training set, fits a 7-component GMM to each, and writes the decision thresholds to `outputs/{dataset}/thresholds_cloud.yaml`.
-
-### Inference
-
-```
-Stage 1 — Edge scan  [parallel]
-  Load all Q-BAT models (.pte files) via ExecuTorch
-  Run all models simultaneously — one thread per model, GIL released during C inference
-  Each model computes anomaly energy for every test session
-  Compare energy to per-model GMM threshold → binary prediction per model
-  Majority vote across Q-BAT models → edge prediction array
-
-Stage 2 — Routing
-  Stack per-model energy scores into a multi-dimensional feature vector per session
-  Estimate the covariance matrix from training energy scores
-  Compute Mahalanobis distance: how far each session is from the normal cluster
-  Route the most uncertain sessions (top 10% by distance) to the cloud
-
-Stage 3 — Cloud re-check  [parallel]
-  Run all BAT checkpoints on the routed sessions simultaneously
-  Thread pool (up to 4 workers by default), each worker uses its own CUDA stream
-  GPU kernels from different models can overlap on the same device
-  Majority vote across all BAT models → cloud prediction for each routed session
-
-Stage 4 — Merge and evaluate
-  Replace edge predictions at routed positions with cloud predictions
-  Compute: accuracy, precision, recall, F-score
-  (Point-adjustment is applied: if any session in a ground-truth anomaly
-   segment is detected, the whole segment is credited — standard protocol)
-```
+After training, `run.py eval` loads all checkpoints, computes per-model energy distributions on the test set, fits a 7-component GMM, and writes decision thresholds to `outputs/{dataset}/thresholds_cloud.yaml`.
 
 ### Hyperparameter sweep structure
 
-Configured in `configs/training/{dataset}.yaml`:
+Each dataset has its own sweep config. Example for BGL (`configs/training/bgl.yaml`):
 
 ```yaml
 num_epochs:  [3, 6, 10]    # number of training epochs
@@ -533,10 +570,44 @@ e_layer_num: [3, 6, 8]     # number of encoder layers
 batch_size:  [32, 64, 96]  # training batch size
 ```
 
-Each combination produces one checkpoint named:
+3 × 3 × 3 × 3 = **81 checkpoints** per dataset, named:
 `{DATASET}_e{epochs}_k{k}_l{layers}_b{batch}_checkpoint.pth`
 
-The inference config (`configs/inference/{dataset}.yaml`) can use any subset of these checkpoints. OpenStack inference uses 3 cloud models by default; BGL and HDFS use the full ensemble.
+> Note: `k` values differ between datasets (e.g., OpenStack uses `[1, 3, 5]`). Check the relevant config file for each dataset.
+
+### Inference
+
+```
+Stage 1 — Edge scan  [ceco-lad env, parallel]
+  Load all Q-BAT models (.pte files) via ExecuTorch
+  Run all models simultaneously — one thread per model, GIL released during C inference
+  Each model scores every test log line → per-line energy scores [N_lines, n_edge_models]
+  Compare energy to per-model threshold → binary prediction per line per model
+  Majority vote across Q-BAT models → edge prediction array [N_lines]
+
+Stage 2 — Routing  [ceco-lad env]
+  Stack per-model energy scores: [N_lines, n_edge_models] feature matrix
+  Estimate covariance from training energy scores (Mahalanobis)
+  Compute distance from the normal cluster for each line
+  Route the most uncertain lines (top 10% by distance) to the cloud
+  Save routed line feature vectors as routed_lines.npy [N_routed, input_c]
+
+Stage 3 — Cloud re-check  [hybrid env, parallel]
+  Reshape routed lines [N_routed, input_c] → windows [N_routed//win_size, win_size, input_c]
+  Run all 81 BAT checkpoints on these windows simultaneously (thread pool)
+  Each model outputs per-line energy scores → threshold → binary per line
+  Majority vote across all BAT models → one cloud prediction per routed line
+
+Stage 4 — Merge and evaluate  [hybrid env]
+  Replace edge predictions at routed line positions with cloud predictions
+  Apply point-adjustment: if any line in a ground-truth anomaly segment is
+  detected, the whole segment is credited (standard evaluation protocol)
+  Print accuracy, precision, recall, F-score for edge and hybrid results
+```
+
+### Routing granularity
+
+Routing operates at the **line level** (individual log events), not at the window level. The edge agent produces one energy score per log line. The router selects the 10% of lines with the highest Mahalanobis distance from the normal cluster and sends their feature vectors to the cloud. The cloud reshapes groups of lines into windows for EMAT processing and returns one prediction per line.
 
 ---
 
@@ -558,48 +629,77 @@ The inference config (`configs/inference/{dataset}.yaml`) can use any subset of 
 
 ## Troubleshooting
 
-**`ModuleNotFoundError: No module named 'gdown'`**
+**`ModuleNotFoundError: No module named 'ceco_core'`**
+
+Run all commands from the project root and make sure the package is installed:
 ```bash
-pip install "gdown>=6.0"
+cd /path/to/CECO-LAD
+pip install -e .
 ```
 
 **`ModuleNotFoundError: No module named 'executorch'`**
-ExecuTorch was not installed into the active environment. With `ceco-lad` active, run:
+
+ExecuTorch was not installed into the active environment. With `ceco-lad` active:
 ```bash
 cd inference_pipeline/executorch
 python install_requirements.py
 ```
 
-**`FileNotFoundError: configs/training/hdfs.yaml`**
-All commands must be run from the project root, not a subdirectory:
-```bash
-cd /path/to/CECO-LAD
-python run.py train hdfs
-```
-
 **`FileNotFoundError: outputs/os/thresholds_cloud.yaml`**
+
 Run Step 3 (evaluate) before Step 4 (infer):
 ```bash
 python run.py eval os
 ```
 
+**`FileNotFoundError: outputs/os/routed_lines.npy`**
+
+The edge phase has not been run yet. Run the full pipeline first:
+```bash
+python run.py infer os
+```
+Or run only the cloud phase after the edge phase completes:
+```bash
+conda activate hybrid
+python dashboard/cloud_runner.py --config configs/inference/os.yaml
+```
+
+**`FileNotFoundError: checkpoints/bat/os/...`**
+
+Checkpoints have not been downloaded. Run Step 2:
+```bash
+python run.py download os
+```
+
 **`CUDA out of memory` during training**
-Reduce the batch sizes in `configs/training/{dataset}.yaml`:
+
+Reduce batch sizes in `configs/training/{dataset}.yaml`:
 ```yaml
 batch_size: [32]
 ```
 
 **Dashboard shows "Database: Empty" after a long wait**
-Check that the processed data files exist in `data/OpenStack/`, `data/BGL/`, and `data/HDFS/`. If the raw log files under `~/Desktop/Log Data/` are missing, only the processed sessions will be unavailable — the rest of the dashboard still works.
 
-**Dashboard Pipeline tab — raw log column shows no results**
-The raw log files are imported in the background and may take a few minutes. Watch the **Database** status indicator in the sidebar — it changes from **Importing…** to **Ready** when the import finishes.
+Check that the processed data files exist:
+```bash
+ls data/OpenStack/ data/BGL/ data/HDFS/
+```
 
 **Dashboard `Start Analysis` button has no effect**
-The dashboard calls inference using the `ceco-lad` and `hybrid` Conda environments (configured in `dashboard/app.py`). Verify that:
+
+Verify all prerequisites:
 1. Both environments exist: `conda env list`
-2. The threshold file exists: `outputs/{dataset}/thresholds_cloud.yaml`
-3. The Q-BAT checkpoints exist: `checkpoints/qbat/{dataset}/`
+2. Threshold file exists: `ls outputs/{dataset}/thresholds_cloud.yaml`
+3. Q-BAT checkpoints exist: `ls checkpoints/qbat/{dataset}/`
+4. ExecuTorch is installed: `python -c "from executorch.runtime import Runtime; print('OK')"`
+
+**`[cache] Skip ... Torch not compiled with CUDA enabled`**
+
+This warning appears when the `ceco-lad` environment uses a CPU-only PyTorch build. The in-RAM model cache will not load, but single-log predictions automatically fall back to the `hybrid` environment subprocess. This does not affect full pipeline inference results.
+
+**Dashboard is slow on first single-log prediction**
+
+On first use, the dashboard loads all 81 BAT models into RAM (~3.5 GB per dataset). Subsequent predictions are fast (2–3 seconds). The first prediction may take up to 90 seconds while models load.
 
 ---
 

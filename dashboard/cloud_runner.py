@@ -71,46 +71,70 @@ def main() -> None:
             sys.exit(1)
         return np.load(path)
 
-    routed_windows  = _load("routed_windows.npy")
     ground_truth   = _load("ground_truth.npy")
     routed_indices = _load("routed_indices.npy")
-    edge_preds_raw = _load("edge_preds_raw.npy")   # raw (not point-adjusted)
+    edge_preds_raw = _load("edge_preds_raw.npy")
 
     cloud_cfg = cfg.get("cloud")
     if not cloud_cfg:
         logging.info("No 'cloud' section in config — nothing to do.")
         return
 
-    if len(routed_windows) == 0:
-        logging.info("No routed windows — skipping cloud inference.")
+    win_size = cfg.get("win_size", 100)
+
+    # Support both new format (routed_lines.npy [N, input_c]) and old format
+    # (routed_windows.npy [N, win_size, input_c]) produced by the old pipeline.
+    lines_path   = os.path.join(out_base, "routed_lines.npy")
+    windows_path = os.path.join(out_base, "routed_windows.npy")
+
+    if os.path.exists(lines_path):
+        routed_lines = np.load(lines_path)   # [N_routed, input_c]
+        input_c = routed_lines.shape[1]
+        n_lines = len(routed_lines)
+        # Drop the tail that doesn't fill a complete window.
+        n_full   = (n_lines // win_size) * win_size
+        windows  = routed_lines[:n_full].reshape(-1, win_size, input_c)  # [N_win, win_size, input_c]
+        use_indices = routed_indices[:n_full]
+    elif os.path.exists(windows_path):
+        windows = np.load(windows_path)      # [N_windows, win_size, input_c]
+        input_c = windows.shape[2]
+        use_indices = routed_indices
+    else:
+        logging.error("Neither routed_lines.npy nor routed_windows.npy found in %s.\n"
+                      "Run the edge phase first (Phase 1/2).", out_base)
+        sys.exit(1)
+
+    if len(windows) == 0:
+        logging.info("No routed lines — skipping cloud inference.")
         return
 
     cloud_cfg.setdefault("dataset", dataset)
-    cloud_cfg.setdefault("win_size", cfg["win_size"])
-    cloud_cfg.setdefault("input_c", cfg["input_c"])
+    cloud_cfg.setdefault("win_size", win_size)
+    cloud_cfg.setdefault("input_c", input_c)
 
     logging.info("=== Cloud BAT Inference ===")
-    cloud_preds = cloud_expert.run(routed_windows, cloud_cfg)
+    # cloud_expert returns one prediction per line [N_win * win_size]
+    cloud_preds = cloud_expert.run(windows, cloud_cfg)
     np.save(os.path.join(out_base, "cloud_preds.npy"), cloud_preds)
 
     logging.info("=== Stage 4: Hybrid Evaluation ===")
-    logging.info(
-        "Cloud preds: %d anomalous / %d routed windows.",
-        int(cloud_preds.sum()), len(cloud_preds),
-    )
-
-    # routed_indices are per-line; cloud_preds are per-window.
-    # Re-derive the window index order (same sorted order as run.py) and map each
-    # selected line to its window's cloud prediction, then update those lines only.
-    win_size = cfg.get("win_size", 100)
-    routed_window_indices = sorted(set(int(i) // win_size for i in routed_indices))
-    window_pred_map = {w: cloud_preds[j] for j, w in enumerate(routed_window_indices)}
 
     hybrid_preds = edge_preds_raw.copy()
-    line_idx = np.array(routed_indices, dtype=int)
-    line_cloud_preds = np.array([window_pred_map[int(i) // win_size] for i in routed_indices], dtype=int)
-    hybrid_preds[line_idx] = line_cloud_preds
+    if os.path.exists(lines_path):
+        # Per-line predictions mapped directly back via index.
+        hybrid_preds[use_indices] = cloud_preds
+    else:
+        # Legacy window format — stamp entire window with its prediction.
+        for k, win_idx in enumerate(routed_indices):
+            start = int(win_idx) * win_size
+            end   = min(start + win_size, len(hybrid_preds))
+            hybrid_preds[start:end] = cloud_preds[k * win_size:(k + 1) * win_size]
 
+    logging.info(
+        "Cloud preds: %d / %d routed %s anomalous.",
+        int(cloud_preds.sum()), len(routed_indices),
+        "lines" if os.path.exists(lines_path) else "windows",
+    )
     logging.info(
         "Hybrid raw preds: %d anomalous / %d total timesteps.",
         int(hybrid_preds.sum()), len(hybrid_preds),

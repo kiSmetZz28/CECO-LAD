@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -18,6 +19,8 @@ from pydantic import BaseModel
 ROOT = Path(__file__).parent.parent
 # Make dashboard/ importable so db.py / ingest.py can be imported directly
 sys.path.insert(0, str(Path(__file__).parent))
+# Make project root importable so ceco_core / inference_pipeline are accessible
+sys.path.insert(0, str(ROOT))
 import db as _db
 
 app = FastAPI(title="CECO-LAD Dashboard")
@@ -158,106 +161,363 @@ class RunRequest(BaseModel):
 
 
 # ── Single-session prediction ─────────────────────────────────────────────────
-# Number of BAT checkpoints to load for the interactive "Predict" button.
-# Capped so a single prediction returns within ~2 seconds on CPU.
-_SINGLE_PREDICT_MAX_MODELS = 9
+# Edge: first 3 BAT combos (e3_k1_l3_b32/64/96) act as the Q-BAT proxy.
+# Cloud: all 81 BAT combos — full ensemble, matches the batch pipeline.
+_N_EDGE_MODELS  = 3
+_N_CLOUD_MODELS = 999
+
+# ── In-process BAT model cache ────────────────────────────────────────────────
+# Models are loaded from disk once at startup and kept in RAM (~3.5 GB per dataset).
+# Subsequent single-window predictions use the cache → ~2-3s instead of 78s.
+_bat_cache: dict[str, dict] = {}        # dataset → {mname: {"model": EMAT, "threshold": float}}
+_bat_cache_ready: dict[str, bool] = {}  # dataset → bool
+_bat_cache_lock  = threading.Lock()
+
+
+def _preload_bat_models(dataset: str) -> None:
+    """Load all BAT models for one dataset into RAM. Called at startup in a bg thread."""
+    cfg_path = ROOT / "configs" / "inference" / f"{dataset}.yaml"
+    if not cfg_path.exists():
+        return
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f)
+    cloud_cfg = cfg.get("cloud")
+    if not cloud_cfg:
+        return
+
+    ckpt_dir     = ROOT / cloud_cfg["model_save_path"]
+    thresh_path  = ROOT / cloud_cfg["thresholds_yaml"]
+    win_size     = cfg.get("win_size", 100)
+    input_c      = cfg.get("input_c", 10)
+    dataset_name = cloud_cfg.get("dataset", cfg.get("dataset", ""))
+
+    if not ckpt_dir.exists() or not thresh_path.exists():
+        return
+
+    try:
+        from ceco_core.models.EMAT import EMAT
+        from inference_pipeline.cloud_expert import _load_thresholds
+        from itertools import product as iproduct
+        import torch as _torch
+
+        thresholds = _load_thresholds(str(thresh_path))
+        try:
+            _cuda = _torch.cuda.is_available()
+        except Exception:
+            _cuda = False
+        device = _torch.device("cuda:0" if _cuda else "cpu")
+        keys   = ["num_epochs", "k", "e_layer_num", "batch_size"]
+        combos = list(iproduct(*[cloud_cfg[k] for k in keys]))
+
+        _torch.set_num_threads(2)
+
+        print(f"[cache:{dataset}] Loading {len(combos)} BAT models into RAM…", flush=True)
+        loaded = 0
+        ds_cache: dict = {}
+        for ep, k, layers, bsz in combos:
+            mname = f"{dataset_name}_e{ep}_k{k}_l{layers}_b{bsz}"
+            ckpt  = ckpt_dir / f"{mname}_checkpoint.pth"
+            if not ckpt.exists() or mname not in thresholds:
+                continue
+            try:
+                mdl = EMAT(win_size=win_size, enc_in=input_c,
+                           c_out=input_c, e_layers=layers)
+                mdl.load_state_dict(
+                    _torch.load(str(ckpt), map_location=device,
+                                weights_only=True), strict=False)
+                mdl.to(device).eval()
+                ds_cache[mname] = {"model": mdl, "threshold": thresholds[mname]}
+                loaded += 1
+            except Exception as e:
+                print(f"[cache:{dataset}] Skip {mname}: {e}", flush=True)
+
+        with _bat_cache_lock:
+            _bat_cache[dataset] = ds_cache
+            _bat_cache_ready[dataset] = loaded > 0
+        print(f"[cache:{dataset}] {loaded} BAT models ready in RAM.", flush=True)
+    except Exception as exc:
+        print(f"[cache:{dataset}] Model preload failed: {exc}", flush=True)
+
+
+def _predict_from_cache(arr: "np.ndarray", win_size: int,
+                        dataset: str, start: int, max_models: int) -> list:
+    """Run inference using in-RAM models for the given dataset — no disk I/O."""
+    from ceco_core.utils.energy import compute_energy_batch
+    import torch as _torch
+    import concurrent.futures
+
+    try:
+        _cuda = _torch.cuda.is_available()
+    except Exception:
+        _cuda = False
+    device = _torch.device("cuda:0" if _cuda else "cpu")
+    x = _torch.from_numpy(arr[:win_size] if len(arr) >= win_size
+                          else np.vstack([arr,
+                                np.zeros((win_size - len(arr), arr.shape[1]),
+                                         dtype=np.float32)])).float().unsqueeze(0).to(device)
+
+    with _bat_cache_lock:
+        entries = list(_bat_cache.get(dataset, {}).items())[start : start + max_models]
+
+    def _infer(item):
+        mname, v = item
+        try:
+            energy = compute_energy_batch(v["model"], x, win_size)
+            mean_e = float(energy.mean())
+            return {"model": mname, "energy": round(mean_e, 6),
+                    "threshold": round(v["threshold"], 6),
+                    "vote": 1 if mean_e > v["threshold"] else 0}
+        except Exception:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        return [r for r in ex.map(_infer, entries) if r is not None]
+
+
+def _run_bat_subprocess(
+    tmp_path: str,
+    cfg_path: "Path",
+    start: int,
+    max_models: int,
+    timeout: int = 300,
+) -> dict:
+    """Call bat_predict.py and return the parsed JSON result."""
+    import json as _json
+    import subprocess
+    script = str(Path(__file__).parent / "bat_predict.py")
+    proc = subprocess.run(
+        [CLOUD_PYTHON, script,
+         "--input",      tmp_path,
+         "--config",     str(cfg_path),
+         "--start",      str(start),
+         "--max-models", str(max_models)],
+        capture_output=True, text=True, cwd=str(ROOT), timeout=timeout,
+    )
+    if proc.returncode != 0:
+        msg = (proc.stderr or "").strip().splitlines()
+        raise RuntimeError(msg[-1] if msg else "unknown error")
+    stdout = proc.stdout.strip()
+    if not stdout:
+        raise RuntimeError("bat_predict.py produced no output")
+    return _json.loads(stdout)
+
+
+def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
+    """Return single-session results from the last full pipeline run's .npy files.
+
+    Returns None if pipeline outputs don't exist (fall back to fresh prediction).
+    Uses point-adjusted predictions so results match the reported pipeline metrics.
+    """
+    out_base = ROOT / "outputs" / dataset.lower()
+    needed   = ["edge_preds.npy", "hybrid_preds.npy"]
+    if not all((out_base / f).exists() for f in needed):
+        return None
+
+    edge_adj = np.load(out_base / "edge_preds.npy")    # point-adjusted edge
+    hybrid   = np.load(out_base / "hybrid_preds.npy")  # point-adjusted hybrid
+
+    # Load actual routed event indices so routing display reflects reality.
+    _ri_path = out_base / "routed_indices.npy"
+    _routed_indices = np.load(_ri_path) if _ri_path.exists() else np.array([], dtype=np.int64)
+
+    cfg_path = ROOT / "configs" / "inference" / f"{dataset}.yaml"
+    win_size = 100
+    if cfg_path.exists():
+        with open(cfg_path) as _f:
+            win_size = yaml.safe_load(_f).get("win_size", 100)
+
+    # Both BGL and OS use proportional mapping from the index returned by
+    # _find_window_for_raw to the correct position in the npy event arrays.
+    # This ensures predictions match the pipeline exactly regardless of how
+    # many events each session/line contributed.
+    if dataset == "bgl":
+        # BGL: session_idx = combined local test line index (raw log line).
+        # Each line maps to one npy event proportionally.
+        N_NORM_LINES  = _db.BGL_N_TEST_NORMAL_LINES    # 925712
+        N_ANOM_LINES  = _db.BGL_N_TEST_ABNORMAL_LINES  # 348460
+        N_NORM_EVENTS = _db.BGL_N_NORMAL_EVENTS         # 854957
+        N_ANOM_EVENTS = _db.BGL_N_ABNORMAL_EVENTS       # 419143
+        if session_idx < N_NORM_LINES:
+            start = min(int(session_idx * N_NORM_EVENTS / N_NORM_LINES),
+                        N_NORM_EVENTS - 1)
+        else:
+            k     = session_idx - N_NORM_LINES
+            start = N_NORM_EVENTS + min(int(k * N_ANOM_EVENTS / N_ANOM_LINES),
+                                        N_ANOM_EVENTS - 1)
+        end = min(start + 1, len(hybrid))
+    elif dataset == "os":
+        # OS: session_idx = processed session index (0..N_NORMAL+N_ABNORMAL-1).
+        # Each session maps to its proportional range of npy events.
+        N_NORM_SESS   = _db.OS_N_NORMAL_SESSIONS    # 1248
+        N_NORM_EVENTS = _db.OS_N_NORMAL_EVENTS      # 136913
+        N_ANOM_EVENTS = _db.OS_N_ABNORMAL_EVENTS    # 18387
+        N_ANOM_SESS   = _db.OS_N_ABNORMAL_SESSIONS  # 138
+        if session_idx < N_NORM_SESS:
+            start = min(int(session_idx * N_NORM_EVENTS / N_NORM_SESS),
+                        N_NORM_EVENTS - 1)
+            end   = min(start + _db.OS_AVG_NORMAL_EVENTS, len(hybrid))
+        else:
+            k     = session_idx - N_NORM_SESS
+            start = N_NORM_EVENTS + min(int(k * N_ANOM_EVENTS / N_ANOM_SESS),
+                                        N_ANOM_EVENTS - 1)
+            end   = min(start + _db.OS_AVG_ABNORMAL_EVENTS, len(hybrid))
+    elif dataset == "hdfs":
+        # HDFS: session_idx = local test line index (direct npy position).
+        # Guard: if npy arrays are from an old short demo run, refuse to clamp
+        # silently — return None so _fresh_predict is used instead.
+        N_HDFS_TEST = _db.HDFS_N_TEST_NORMAL_LINES + _db.HDFS_N_TEST_ABNORMAL_LINES
+        if len(hybrid) < N_HDFS_TEST // 2:   # clearly a stale short array
+            return None
+        start = min(session_idx, len(hybrid) - 1)
+        end   = start + 1
+    else:
+        start = session_idx * win_size
+        end   = min(start + win_size, len(hybrid))
+
+    if start >= len(hybrid):
+        return None
+
+    n_lines     = end - start
+    edge_pred   = 1 if edge_adj[start:end].sum() > 0 else 0
+    hybrid_pred = 1 if hybrid[start:end].sum()   > 0 else 0
+
+    # Check if the anchor event at `start` was routed to cloud.
+    # Using a single point avoids false-positives for OS where proportional
+    # session ranges span ~109 events and would almost always contain a routed index.
+    routed = bool(np.searchsorted(_routed_indices, start) < len(_routed_indices)
+                  and _routed_indices[np.searchsorted(_routed_indices, start)] == start)
+
+    def _stage(pred, n_models):
+        return {
+            "prediction":      pred,
+            "label":           "ANOMALY" if pred else "NORMAL",
+            "n_models":        n_models,
+            "n_anomaly_votes": pred,
+            "n_normal_votes":  1 - pred,
+            "model_results":   [],
+        }
+
+    routing = {
+        "routed":     routed,
+        "avg_margin": 0.0,
+        "reason":     "edge uncertain — routed to cloud" if routed
+                      else "edge result confirmed by hybrid",
+    }
+    edge_result  = _stage(edge_pred,   1)
+    cloud_result = _stage(hybrid_pred, 1)
+
+    return {
+        **cloud_result,
+        "n_events":     n_lines,
+        "win_size":     win_size,
+        "padded":       False,
+        "elapsed_s":    0.0,
+        "edge":         edge_result,
+        "routing":      routing,
+        "cloud":        cloud_result,
+        "source":       "pipeline",
+        "window_index": session_idx,
+    }
 
 
 def _fresh_predict(dataset: str, content: str) -> dict:
-    """Score one event-ID sequence through the cloud BAT ensemble.
+    """Score one session through the full three-stage pipeline.
 
-    Environment split — mirrors the full-pipeline two-phase approach:
-      • Scaling runs here, in the ceco-lad env (scaler already fitted in memory).
-      • Model loading + GPU inference runs in the hybrid env via bat_predict.py,
-        called as a subprocess through CLOUD_PYTHON.
-
-    Communication:
-      • Input  → temp .npy file  (scaled [n_events, input_c] float32 array)
-      • Output ← JSON on stdout  (prediction result dict)
+    Uses in-RAM model cache when available (loaded at startup) so inference
+    takes ~2-3s instead of 78s.  Falls back to subprocess on first call if
+    the cache is not yet ready.
     """
-    import json as _json
-    import subprocess
-    import tempfile
     import time
-
     t0 = time.time()
 
-    # ── Check config ─────────────────────────────────────────────────────────
     cfg_path = ROOT / "configs" / "inference" / f"{dataset}.yaml"
     if not cfg_path.exists():
         return {"error": f"No inference config for '{dataset}'"}
-
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
-
     if not cfg.get("cloud"):
-        return {"error": f"Live session prediction is not available for '{dataset}' — "
-                          "no BAT cloud models are configured. Switch to OpenStack for a live demo."}
+        return {"error": f"Live prediction is not available for '{dataset}' — "
+                          "no BAT cloud models configured. Switch to OpenStack."}
 
     win_size = cfg.get("win_size", 100)
-    input_c  = cfg.get("input_c", 10)
 
-    # ── Scale content in ceco-lad env ────────────────────────────────────────
     scaled = _scale_content(dataset, content)
     if not scaled:
         st = _scalers.get(dataset)
         if not st or not st.get("ready"):
-            return {"error": "Scaler not ready yet — wait a moment after dashboard startup"}
+            return {"error": "Scaler not ready — wait a moment after dashboard startup"}
         return {"error": "Session has no parseable events"}
 
-    arr      = np.array(scaled, dtype=np.float32)   # [n_events, input_c]
+    arr      = np.array(scaled, dtype=np.float32)
     n_events = len(arr)
 
-    # ── Call bat_predict.py in hybrid env ────────────────────────────────────
-    tmp_path = None
+    def _make_result(model_results):
+        n      = len(model_results)
+        n_anom = sum(r["vote"] for r in model_results)
+        pred   = 1 if n_anom > n / 2 else 0
+        padded = n_events < win_size
+        return {
+            "prediction":      pred,
+            "label":           "ANOMALY" if pred else "NORMAL",
+            "n_models":        n,
+            "n_anomaly_votes": n_anom,
+            "n_normal_votes":  n - n_anom,
+            "model_results":   model_results,
+            "n_events":        n_events,
+            "win_size":        win_size,
+            "padded":          padded,
+        }
+
     try:
-        with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as f:
-            tmp_path = f.name
-        np.save(tmp_path, arr)
+        if _bat_cache_ready.get(dataset, False):
+            # ── Fast path: use in-RAM cache (no disk I/O) ────────────────────
+            edge_results  = _predict_from_cache(arr, win_size, dataset,
+                                                start=0, max_models=_N_EDGE_MODELS)
+            cloud_results = _predict_from_cache(arr, win_size, dataset,
+                                                start=0, max_models=_N_CLOUD_MODELS)
+        else:
+            # ── Slow path: subprocess (cache not ready yet) ───────────────────
+            import tempfile
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as f:
+                    tmp_path = f.name
+                np.save(tmp_path, arr)
+                edge_r  = _run_bat_subprocess(tmp_path, cfg_path,
+                                              start=0, max_models=_N_EDGE_MODELS)
+                cloud_r = _run_bat_subprocess(tmp_path, cfg_path,
+                                              start=0, max_models=_N_CLOUD_MODELS)
+                if "error" in edge_r:  return edge_r
+                if "error" in cloud_r: return cloud_r
+                edge_results  = edge_r.get("model_results", [])
+                cloud_results = cloud_r.get("model_results", [])
+            finally:
+                if tmp_path:
+                    try: os.unlink(tmp_path)
+                    except OSError: pass
 
-        script = str(Path(__file__).parent / "bat_predict.py")
-        proc   = subprocess.run(
-            [
-                CLOUD_PYTHON, script,
-                "--input",      tmp_path,
-                "--config",     str(cfg_path),
-                "--max-models", str(_SINGLE_PREDICT_MAX_MODELS),
-            ],
-            capture_output=True,
-            text=True,
-            cwd=str(ROOT),
-            timeout=120,
-        )
+        edge  = _make_result(edge_results)
+        cloud = _make_result(cloud_results)
 
-        if proc.returncode != 0:
-            lines = (proc.stderr or "").strip().splitlines()
-            msg   = lines[-1] if lines else "unknown error"
-            return {"error": f"BAT inference subprocess failed: {msg}"}
+        margins    = [abs(r["energy"] - r["threshold"]) / (r["threshold"] + 1e-9)
+                      for r in edge_results]
+        avg_margin = float(np.mean(margins)) if margins else 1.0
+        routed     = avg_margin < 0.5 or (0 < edge["n_anomaly_votes"] < edge["n_models"])
+        routing    = {
+            "routed":     routed,
+            "avg_margin": round(avg_margin, 4),
+            "reason":     "uncertain (margin < 0.5 or models disagree)" if routed
+                          else "confident — cloud confirms edge result",
+        }
 
-        stdout = proc.stdout.strip()
-        if not stdout:
-            return {"error": "BAT inference produced no output — check the hybrid env"}
-
-        result = _json.loads(stdout)
-        # Replace the sub-process elapsed time with wall-clock time including launch.
-        if "elapsed_s" in result:
-            result["elapsed_s"] = round(time.time() - t0, 2)
-        # Attach n_events from this side (subprocess reports its own; may differ if padded).
-        result.setdefault("n_events", n_events)
-        return result
+        return {**cloud,
+                "elapsed_s": round(time.time() - t0, 2),
+                "edge": edge, "routing": routing, "cloud": cloud}
 
     except subprocess.TimeoutExpired:
-        return {"error": "BAT inference timed out (>120 s) — try reducing max_models"}
-    except _json.JSONDecodeError as exc:
-        return {"error": f"Could not parse subprocess output: {exc}"}
+        return {"error": "Prediction timed out (>300 s)"}
     except Exception as exc:
         return {"error": f"Prediction error: {exc}"}
-    finally:
-        if tmp_path:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
 
 
 def _find_window_for_raw(dataset: str, split: str, line_number: int, block_id: str) -> Optional[int]:
@@ -290,21 +550,25 @@ def _find_window_for_raw(dataset: str, split: str, line_number: int, block_id: s
         return int(idx)
 
     elif dataset == "bgl":
-        if split == "train":
-            return max(0, line_number // 100)
-        test_start = _db.BGL_N_TRAIN * 100
-        return max(0, (line_number - test_start) // 100)
+        # Each raw BGL log line maps directly to one npy result — no session
+        # grouping.  Return the combined local test index:
+        #   test_normal  lines → 0 .. N_TEST_NORMAL_LINES-1
+        #   test_abnormal lines → N_TEST_NORMAL_LINES .. N_TEST_NORMAL_LINES+N_TEST_ABNORMAL_LINES-1
+        BGL_N_TRAIN_LINES = _db.BGL_N_TRAIN_LINES
+        if block_id == "bgl_train" or split == "train":
+            lines_per = _db.BGL_LINES_PER_SESSION.get("bgl_train", 41)
+            return max(0, line_number // lines_per)
+        local = max(0, line_number - BGL_N_TRAIN_LINES)
+        return local  # combined test local line index
 
     elif dataset == "hdfs":
-        if not block_id:
-            return None
-        with sqlite3.connect(db_path, timeout=30) as c:
-            row = c.execute(
-                "SELECT window_index FROM windows "
-                "WHERE dataset='hdfs' AND split=? AND block_id=? LIMIT 1",
-                (split, block_id),
-            ).fetchone()
-        return int(row[0]) if row else None
+        # HDFS npy arrays are indexed by raw test line (same as BGL).
+        # Return the test-local line index so _lookup_pipeline_result can index
+        # directly into hybrid_preds.npy / routed_indices.npy.
+        if split == "train":
+            return None   # no pipeline results for train
+        local = max(0, line_number - _db.HDFS_N_TRAIN_LINES)
+        return local
 
     return None
 
@@ -334,26 +598,65 @@ async def predict_from_raw(
 
     paths     = _TXT_PATHS.get(dataset, {}).get(split, [])
     all_lines = await asyncio.to_thread(_read_txt_lines, paths)
-    if window_idx >= len(all_lines):
-        return {"error": f"Mapped to session #{window_idx} but only {len(all_lines)} sessions exist. "
-                         "This log line may be at the boundary of the dataset."}
+    if not all_lines:
+        return {"error": "No session data found. Check that the dataset is fully ingested."}
 
-    content = all_lines[window_idx]
-    result  = await asyncio.to_thread(_fresh_predict, dataset, content)
-    if "error" in result:
-        return result
+    # For BGL and HDFS the window_idx is a raw local line index (up to ~11M for
+    # HDFS, ~1.27M for BGL) — don't clamp against the txt-file session count.
+    if dataset not in ("bgl", "hdfs") and window_idx >= len(all_lines):
+        window_idx = len(all_lines) - 1
 
-    result["source"]       = "live"
+    if split == "test":
+        result = await asyncio.to_thread(_lookup_pipeline_result, dataset, window_idx)
+    else:
+        result = None
+
+    if result is None:
+        # For BGL: convert raw line index → session index for txt-file lookup.
+        if dataset == "bgl" and split == "test":
+            N_NORM = _db.BGL_N_TEST_NORMAL_LINES
+            if window_idx < N_NORM:
+                lp = _db.BGL_LINES_PER_SESSION.get("bgl_test_normal", 44)
+                sess = min(window_idx // lp, _db.BGL_N_TEST_NORMAL_SESSIONS - 1)
+            else:
+                lp   = _db.BGL_LINES_PER_SESSION.get("bgl_test_abnormal", 27)
+                k    = window_idx - N_NORM
+                sess = _db.BGL_N_TEST_NORMAL_SESSIONS + min(k // lp, 13041)
+            content = all_lines[sess] if sess < len(all_lines) else ""
+        else:
+            content = all_lines[window_idx]
+        result  = await asyncio.to_thread(_fresh_predict, dataset, content)
+        if "error" in result:
+            return result
+        result["source"] = "live"
+
     result["window_index"] = window_idx
 
-    try:
-        db_win = await _db.get_window_detail(dataset, split, window_idx)
-        result["ground_truth"] = db_win.get("label") if db_win else None
-    except Exception as exc:
-        import logging as _log
-        _log.warning("predict_from_raw: DB lookup failed %s/%s/%d: %s",
-                     dataset, split, window_idx, exc)
-        result["ground_truth"] = None
+    # Derive ground truth from pipeline npy gt array when available (HDFS, BGL),
+    # or from block_id / windows table for other datasets.
+    if dataset == "bgl":
+        result["ground_truth"] = (
+            1 if block_id == "bgl_test_abnormal" else
+            0 if block_id in ("bgl_train", "bgl_test_normal") else None
+        )
+    elif dataset == "hdfs":
+        # Ground truth derived directly from line_number: test_abnormal lines
+        # start at HDFS_N_TRAIN_LINES + HDFS_N_TEST_NORMAL_LINES in the DB.
+        # This is reliable regardless of npy file size.
+        if split == "test" and line_number is not None:
+            abnormal_start = _db.HDFS_N_TRAIN_LINES + _db.HDFS_N_TEST_NORMAL_LINES
+            result["ground_truth"] = 1 if line_number >= abnormal_start else 0
+        else:
+            result["ground_truth"] = None
+    else:
+        try:
+            db_win = await _db.get_window_detail(dataset, split, window_idx)
+            result["ground_truth"] = db_win.get("label") if db_win else None
+        except Exception as exc:
+            import logging as _log
+            _log.warning("predict_from_raw: DB lookup failed %s/%s/%d: %s",
+                         dataset, split, window_idx, exc)
+            result["ground_truth"] = None
 
     return result
 
@@ -405,9 +708,19 @@ async def _startup():
     st = await _db.get_status()
     if not st.get("win_os_test") or not st.get("raw_os"):
         _trigger_ingest()
+    # Re-ingest BGL windows from txt files if the old CSV-based import is present
+    # (detects upgrade: old key is "bgl_windows"; new key is "bgl_windows_txt").
+    import ingest as _ingest
+    asyncio.create_task(asyncio.to_thread(_ingest.ingest_bgl_windows))
     # Fit StandardScaler for all datasets (needed for single-session prediction)
     for _ds in ("os", "hdfs", "bgl"):
         asyncio.create_task(asyncio.to_thread(_sync_fit_scaler, _ds))
+    # Preload BAT models into RAM only when no separate cloud env is available
+    # (i.e. HF Spaces / Docker where CLOUD_PYTHON == this interpreter).
+    # Locally, the hybrid conda env subprocess is faster and uses the GPU.
+    if CLOUD_PYTHON == sys.executable:
+        for _ds in ("os", "bgl"):
+            asyncio.create_task(asyncio.to_thread(_preload_bat_models, _ds))
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
@@ -708,10 +1021,15 @@ _CONDA = Path.home() / "miniconda3" / "envs"
 EDGE_PYTHON  = os.getenv("EDGE_PYTHON",  str(_CONDA / "ceco-lad" / "bin" / "python"))
 CLOUD_PYTHON = os.getenv("CLOUD_PYTHON", str(_CONDA / "hybrid"   / "bin" / "python"))
 
-# True when the full inference pipeline (edge_agent + run.py) is present on disk.
-# In Docker / HF Spaces only cloud_expert.py is included, so this will be False
-# and inference falls back to streaming pre-computed results.
-_FULL_PIPELINE_AVAILABLE = (ROOT / "inference_pipeline" / "run.py").exists()
+# True when the full inference pipeline (run.py + ExecuTorch executor_runner) is present.
+# Falls back to demo_runner.py when either component is missing.
+_RUNNER_BIN = (
+    ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+)
+_FULL_PIPELINE_AVAILABLE = (
+    (ROOT / "inference_pipeline" / "run.py").exists()
+    and _RUNNER_BIN.exists()
+)
 
 
 # ── Config helpers ────────────────────────────────────────────────────────────
@@ -900,9 +1218,10 @@ async def api_pipeline_raw_logs(
     page: int    = 0,
     per_page: int = 100,
     search: str  = "",
+    label: str   = "",
 ):
     """Raw log lines for any dataset/split, with split-aware filtering."""
-    return await _db.query_pipeline_raw(dataset, split, page, per_page, search)
+    return await _db.query_pipeline_raw(dataset, split, page, per_page, search, label)
 
 
 @app.get("/api/pipeline/sessions")

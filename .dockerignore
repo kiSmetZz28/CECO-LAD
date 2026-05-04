@@ -1,25 +1,28 @@
-# Model checkpoints — downloaded at first launch by spaces_startup.py
-# BAT full-precision checkpoints (3.5 GB) are fetched from Google Drive
-checkpoints/
-*.pte
+# ── Checkpoints ──────────────────────────────────────────────────────────────
+# BAT full-precision checkpoints (3.5 GB) — downloaded at first launch
+checkpoints/bat/
+# Q-BAT quantized checkpoints (218 MB) — bundled in image via COPY
+# (no exclusion needed; the default includes them)
 
-# ExecuTorch C++ source (3 GB) and edge/training pipelines
+# ── ExecuTorch source (3 GB C++ build tree) ───────────────────────────────────
+# Only the compiled binary is included (explicit COPY in Dockerfile).
 inference_pipeline/executorch/
-inference_pipeline/edge_agent.py
-inference_pipeline/evaluate.py
-inference_pipeline/run.py
-# routing.py is kept — demo_runner.py needs it for Mahalanobis routing
+
+# ── Training and conversion pipelines ────────────────────────────────────────
 training_pipeline/
 edge_pipeline/
+
+# ── Unused legacy directories ─────────────────────────────────────────────────
 cloud/
 edge/
 tests/
 environment/
-# tools/ is partially included: download_checkpoints.py is explicitly COPYed
+
+# ── tools/ — only download_checkpoints.py is included (explicit COPY) ─────────
 tools/
 !tools/download_checkpoints.py
 
-# Runtime artefacts
+# ── Runtime artefacts ────────────────────────────────────────────────────────
 logs/
 __pycache__/
 **/__pycache__/
@@ -27,16 +30,16 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Pre-built database — too large for image; app initialises an empty DB on startup
+# ── Local database — too large; app creates a fresh one on startup ─────────────
 dashboard/ceco_lad.db
 
-# Git & IDE
+# ── Git and IDE ───────────────────────────────────────────────────────────────
 .git/
 .gitignore
 .vscode/
 .idea/
 
-# Docs
+# ── Docs ──────────────────────────────────────────────────────────────────────
 pictures/
 *.md
 LICENSE

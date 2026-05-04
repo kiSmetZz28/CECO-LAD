@@ -54,7 +54,7 @@ _QBAT_FOLDER_IDS: dict = {
 
 # Fallback: full Drive folder URL used only when a specific ID is unavailable
 _DRIVE_FOLDER_URL = (
-    "https://drive.google.com/drive/folders/1gLXKsLW22kLRWEJ9D4WKjHovWWn4AOos"
+    "https://drive.google.com/drive/folders/1vZ_h_VVCsxIzzeov09i_uKTPjwyZTPmY"
 )
 
 # Project root is one level above this file  (tools/ → project root)

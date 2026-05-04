@@ -1,22 +1,9 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
-# deploy_hf.sh  —  Deploy CECO-LAD to Hugging Face Spaces (one command)
+# Deploy CECO-LAD to Hugging Face Spaces using the Python upload API.
+# No git-lfs setup needed — huggingface_hub handles large files automatically.
 #
-# Usage:
-#   bash deploy_hf.sh <hf-username> [space-name]
-#
-# Examples:
-#   bash deploy_hf.sh QinxuanShi
-#   bash deploy_hf.sh QinxuanShi ceco-lad-demo
-#
-# What it does:
-#   1. Logs you in to Hugging Face (prompts for token once)
-#   2. Creates the Space if it doesn't exist
-#   3. Pushes all project files to the Space
-#
-# After the push, HF builds the Docker image (~10 min first time).
-# Your public URL will be:  https://<username>-<space-name>.hf.space
-# ─────────────────────────────────────────────────────────────────────────────
+# Usage:  bash deploy_hf.sh <hf-username> [space-name]
+# Example: bash deploy_hf.sh kiSmetZz
 set -euo pipefail
 
 HF_USER="${1:-}"
@@ -24,90 +11,116 @@ SPACE_NAME="${2:-ceco-lad}"
 
 if [[ -z "$HF_USER" ]]; then
     echo "Usage: bash deploy_hf.sh <hf-username> [space-name]"
-    echo "  Get your username at: https://huggingface.co/settings/profile"
     exit 1
 fi
 
-SPACE_ID="${HF_USER}/${SPACE_NAME}"
-SPACE_URL="https://huggingface.co/spaces/${SPACE_ID}"
-SPACE_GIT="https://huggingface.co/spaces/${SPACE_ID}.git"
-
 echo ""
-echo "═══════════════════════════════════════════════════"
-echo "  CECO-LAD  →  Hugging Face Spaces"
-echo "  Space : ${SPACE_ID}"
-echo "  URL   : ${SPACE_URL}"
-echo "═══════════════════════════════════════════════════"
+echo "Deploying CECO-LAD → HF Space: ${HF_USER}/${SPACE_NAME}"
+echo "Public URL after build:  https://${HF_USER}-${SPACE_NAME}.hf.space"
 echo ""
 
-# ── 1. Log in ─────────────────────────────────────────────────────────────────
-echo "Step 1/4  Logging in to Hugging Face…"
-echo "  (get your token at https://huggingface.co/settings/tokens)"
-huggingface-cli login
+pip install -q "huggingface_hub>=0.20"
 
-# ── 2. Create the Space ───────────────────────────────────────────────────────
-echo ""
-echo "Step 2/4  Creating Space '${SPACE_ID}' (Docker, public)…"
-python3 - <<PYEOF
-from huggingface_hub import HfApi
+python3 - "$HF_USER" "$SPACE_NAME" <<'PYEOF'
+import sys, os
+from pathlib import Path
+from huggingface_hub import HfApi, login
+
+hf_user   = sys.argv[1]
+space_name = sys.argv[2]
+repo_id   = f"{hf_user}/{space_name}"
+root      = Path(__file__).parent if "__file__" in dir() else Path(".")
+# When called via bash heredoc __file__ isn't set; use cwd instead
+root = Path(os.getcwd())
+
+print("Step 1/3  Log in to Hugging Face")
+print("  (get your token at https://huggingface.co/settings/tokens — needs Write access)")
+login()
+
 api = HfApi()
-try:
-    api.create_repo(
-        repo_id="${SPACE_ID}",
-        repo_type="space",
-        space_sdk="docker",
-        private=False,
-        exist_ok=True,
-    )
-    print("  Space ready.")
-except Exception as e:
-    print(f"  Note: {e}")
+
+print(f"\nStep 2/3  Creating Space '{repo_id}' (Docker, public)…")
+api.create_repo(
+    repo_id=repo_id,
+    repo_type="space",
+    space_sdk="docker",
+    private=False,
+    exist_ok=True,
+)
+print("  Space ready.")
+
+# Files/dirs to exclude from upload
+IGNORE = {
+    ".git", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache",
+    "dashboard/ceco_lad.db",          # local DB — too large, rebuilt on startup
+    "checkpoints/bat",                 # 3.5 GB — downloaded at runtime by spaces_startup.py
+    "inference_pipeline/executorch/third-party",  # 3 GB C++ source
+    "inference_pipeline/executorch/cmake-out/CMakeFiles",
+    "inference_pipeline/executorch/.git",
+    "logs",
+    "pictures",
+    ".vscode", ".idea",
+    "environment",
+}
+
+def should_ignore(path: Path) -> bool:
+    parts = path.parts
+    for ign in IGNORE:
+        if ign.startswith("*"):
+            if path.name.endswith(ign[1:]):
+                return True
+        else:
+            ign_parts = Path(ign).parts
+            for i in range(len(parts) - len(ign_parts) + 1):
+                if parts[i:i+len(ign_parts)] == ign_parts:
+                    return True
+    return False
+
+# Collect files to upload
+files = []
+for f in root.rglob("*"):
+    if f.is_file() and not should_ignore(f.relative_to(root)):
+        files.append(f)
+
+total_mb = sum(f.stat().st_size for f in files) / 1e6
+print(f"\nStep 3/3  Uploading {len(files)} files ({total_mb:.0f} MB) to HF…")
+print("  Large files (checkpoints, binaries, numpy arrays) are uploaded automatically.")
+print("  This may take 10–30 minutes depending on your connection speed.")
+print()
+
+# Upload in one call — HfApi handles chunking and retries
+api.upload_folder(
+    repo_id=repo_id,
+    repo_type="space",
+    folder_path=str(root),
+    ignore_patterns=[
+        ".git/**",
+        "**/__pycache__/**",
+        "**/*.pyc",
+        "dashboard/ceco_lad.db",
+        "checkpoints/bat/**",
+        "inference_pipeline/executorch/third-party/**",
+        "inference_pipeline/executorch/cmake-out/CMakeFiles/**",
+        "inference_pipeline/executorch/.git/**",
+        "logs/**",
+        "pictures/**",
+        ".vscode/**",
+        ".idea/**",
+        "environment/**",
+    ],
+    run_as_future=False,
+)
+
+print()
+print("=" * 60)
+print("  Upload complete!")
+print()
+print(f"  HF is building the Docker image now (~10 min).")
+print(f"  Space:      https://huggingface.co/spaces/{repo_id}")
+print(f"  Public URL: https://{hf_user}-{space_name}.hf.space")
+print()
+print("  On first visitor:")
+print("    BAT checkpoints download from Google Drive (~3.5 GB, ~10 min)")
+print("    Subsequent visits are instant.")
+print("=" * 60)
 PYEOF
-
-# ── 3. Set up git remote and LFS ──────────────────────────────────────────────
-echo ""
-echo "Step 3/4  Configuring git…"
-
-# Make sure git-lfs is installed (needed for *.npy files > 5 MB)
-if ! git lfs version &>/dev/null 2>&1; then
-    echo "  Installing git-lfs…"
-    sudo apt-get install -y git-lfs 2>/dev/null || brew install git-lfs 2>/dev/null || {
-        echo "  ERROR: git-lfs not found. Install it: https://git-lfs.com"
-        exit 1
-    }
-fi
-git lfs install --local
-
-# Track large numpy / yaml result files with LFS
-git lfs track "outputs/**/*.npy"   2>/dev/null || true
-git lfs track "outputs/**/*.yaml"  2>/dev/null || true
-git add .gitattributes 2>/dev/null || true
-
-# Add or update the HF remote
-if git remote get-url hf &>/dev/null 2>&1; then
-    git remote set-url hf "${SPACE_GIT}"
-else
-    git remote add hf "${SPACE_GIT}"
-fi
-
-# ── 4. Commit and push ────────────────────────────────────────────────────────
-echo ""
-echo "Step 4/4  Pushing to Hugging Face Spaces…"
-echo "  (first push may take a few minutes — outputs/*.npy files are uploaded via LFS)"
-
-git add .
-git diff --cached --quiet || git commit -m "deploy: CECO-LAD dashboard"
-
-git push hf main --force
-
-echo ""
-echo "═══════════════════════════════════════════════════"
-echo "  ✓ Deployment complete!"
-echo ""
-echo "  Your Space is building now (~10 min first time)."
-echo "  Public URL:  ${SPACE_URL}"
-echo ""
-echo "  On first visitor:"
-echo "    • BAT checkpoints download from Google Drive (~3.5 GB, ~10 min)"
-echo "    • Subsequent visits are instant"
-echo "═══════════════════════════════════════════════════"

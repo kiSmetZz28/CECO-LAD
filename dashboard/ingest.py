@@ -19,8 +19,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
+import os
+
 DB_PATH  = Path(__file__).parent / "ceco_lad.db"
-LOG_ROOT = Path.home() / "Desktop" / "Log Data"
+LOG_ROOT = Path(os.environ.get("CECO_LOG_ROOT", Path.home() / "Desktop" / "Log Data"))
 
 BLK_RE = re.compile(r"blk_-?\d+")
 BATCH  = 25_000   # rows per executemany call
@@ -124,13 +126,75 @@ def _already_done(status_key: str, count_query: str) -> bool:
 
 
 def ingest_bgl_windows(cb: Optional[Callable] = None) -> None:
-    if _already_done("bgl_windows", "SELECT COUNT(*) FROM windows WHERE dataset='bgl'"):
-        cb and cb("BGL windows already in DB — skipping."); return
-    cb and cb("Importing BGL windows…")
-    _set_status("bgl_windows", "running")
-    _ingest_windows("bgl", LOG_ROOT / "BGL", "Label", None)
-    _set_status("bgl_windows", "done:")
-    cb and cb("BGL windows done.")
+    """Import BGL windows from the processed txt files.
+
+    Each line in the txt file is one machine-session (space-separated event
+    template IDs), exactly mirroring how OpenStack windows are stored.
+    This aligns window_index with the BGLSegLoader machine ordering so that
+    single-log prediction ground-truth and _fresh_predict content match.
+
+    A versioned key ("bgl_windows_txt") forces a clean re-ingest when
+    upgrading from the legacy CSV-based import.
+    """
+    data_dir = Path(__file__).parent.parent / "data" / "BGL"
+    txt_ok = (
+        (data_dir / "bgl_train.txt").exists()
+        and (data_dir / "bgl_test_normal.txt").exists()
+        and (data_dir / "bgl_test_abnormal.txt").exists()
+    )
+    if not txt_ok:
+        # Fallback: old CSV path
+        if _already_done("bgl_windows", "SELECT COUNT(*) FROM windows WHERE dataset='bgl'"):
+            cb and cb("BGL windows already in DB (CSV) — skipping."); return
+        cb and cb("BGL txt files missing — importing windows from CSV…")
+        _set_status("bgl_windows", "running")
+        _ingest_windows("bgl", LOG_ROOT / "BGL", "Label", None)
+        _set_status("bgl_windows", "done:")
+        cb and cb("BGL windows done (from CSV).")
+        return
+
+    if _already_done("bgl_windows_txt", "SELECT COUNT(*) FROM windows WHERE dataset='bgl'"):
+        cb and cb("BGL windows already in DB (txt) — skipping."); return
+
+    cb and cb("Importing BGL windows from txt files (event IDs)…")
+    _set_status("bgl_windows_txt", "running")
+    with _conn(fast=True) as c:
+        c.execute("DELETE FROM windows WHERE dataset='bgl'")
+
+    rows: list = []
+
+    with open(data_dir / "bgl_train.txt", encoding="utf-8", errors="replace") as f:
+        for i, line in enumerate(f):
+            seq = line.strip()
+            if seq:
+                rows.append(("bgl", "train", i, "bgl_train", 0, len(seq.split()), seq))
+                if len(rows) >= BATCH:
+                    _insert_windows(rows); rows = []
+
+    test_offset = 0
+    for fname, lbl, blk in [
+        ("bgl_test_normal.txt",   0, "bgl_test_normal"),
+        ("bgl_test_abnormal.txt", 1, "bgl_test_abnormal"),
+    ]:
+        p = data_dir / fname
+        if not p.exists():
+            continue
+        count = 0
+        with open(p, encoding="utf-8", errors="replace") as f:
+            for j, line in enumerate(f):
+                seq = line.strip()
+                if seq:
+                    rows.append(("bgl", "test", test_offset + j, blk, lbl,
+                                 len(seq.split()), seq))
+                    if len(rows) >= BATCH:
+                        _insert_windows(rows); rows = []
+                count = j + 1
+        test_offset += count
+
+    if rows:
+        _insert_windows(rows)
+    _set_status("bgl_windows_txt", f"done:{test_offset}")
+    cb and cb(f"BGL windows done ({test_offset} test sessions from txt files).")
 
 
 def ingest_hdfs_windows(cb: Optional[Callable] = None) -> None:
@@ -146,104 +210,143 @@ def ingest_hdfs_windows(cb: Optional[Callable] = None) -> None:
 # ── Raw-log imports ───────────────────────────────────────────────────────────
 
 def ingest_bgl_raw(cb: Optional[Callable] = None) -> None:
-    if _already_done("bgl_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='bgl'"):
+    """Ingest BGL raw logs from the pre-split files in LOG_ROOT/BGL/split/.
+
+    Three files mirror the OpenStack layout:
+      bgl_train.log          → block_id='bgl_train',         label=None
+      bgl_test_normal.log    → block_id='bgl_test_normal',   label=None
+      bgl_test_abnormal.log  → block_id='bgl_test_abnormal', label='1'
+
+    Global line_number is assigned continuously: train first, then test_normal,
+    then test_abnormal.  The db.py constants BGL_N_TRAIN_LINES and
+    BGL_N_TEST_NORMAL_LINES record the per-file line counts so the rest of the
+    dashboard can reconstruct range queries without a block_id DB lookup.
+    """
+    if _already_done("bgl_raw_v2", "SELECT COUNT(*) FROM raw_logs WHERE dataset='bgl'"):
         cb and cb("BGL raw logs already in DB — skipping."); return
-    csv_path = LOG_ROOT / "BGL" / "BGL.log_structured.csv"
-    if not csv_path.exists():
-        _set_status("bgl_raw", "skipped:missing_file")
-        cb and cb("BGL structured CSV not found — skipping raw import.")
+
+    split_dir = LOG_ROOT / "BGL" / "split"
+    file_meta = [
+        (split_dir / "bgl_train.log",        "bgl_train",        False),
+        (split_dir / "bgl_test_normal.log",   "bgl_test_normal",  False),
+        (split_dir / "bgl_test_abnormal.log", "bgl_test_abnormal", True),
+    ]
+    if not all(p.exists() for p, _, _ in file_meta):
+        _set_status("bgl_raw_v2", "skipped:missing_split_files")
+        cb and cb("BGL split files not found in LOG_ROOT/BGL/split/ — skipping raw import.")
         return
 
-    cb and cb("Importing BGL raw logs…")
-    _set_status("bgl_raw", "running:0")
+    # BGL format: label unix_ts date node datetime node_alias type component level content...
+    # label="-" means normal; any other value means anomaly.
+    cb and cb("Importing BGL raw logs from split files…")
+    _set_status("bgl_raw_v2", "running:0")
     with _conn(fast=True) as c:
         c.execute("DELETE FROM raw_logs WHERE dataset='bgl'")
 
     rows: list = []
-    n = 0
-    with open(csv_path, newline="", encoding="utf-8", errors="replace") as f:
-        for row in csv.DictReader(f):
-            lbl = row.get("Label", "-")
-            comp = row.get("Component1") or ""
-            comp2 = row.get("Component2") or ""
-            if comp2:
-                comp = f"{comp}/{comp2}"
-            rows.append((
-                "bgl", n,
-                None if lbl == "-" else lbl,
-                row.get("Time") or row.get("Date"),
-                comp,
-                row.get("Level"),
-                row.get("Content"),
-                None,
-            ))
-            n += 1
-            if len(rows) >= BATCH:
-                _insert_raw(rows); rows = []
-                if n % 500_000 == 0:
-                    _set_status("bgl_raw", f"running:{n}")
-                    cb and cb(f"  BGL raw: {n:,} rows…")
+    n = 0   # global line_number counter (continuous across all files)
+    for log_path, block_id, all_anomaly in file_meta:
+        file_n = 0
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                parts = line.split(None, 9)
+                if len(parts) < 9:
+                    continue
+                lbl       = parts[0]
+                timestamp = parts[4]
+                component = parts[7]
+                level     = parts[8]
+                content   = line.rstrip()
+                rows.append((
+                    "bgl", n,
+                    "1" if all_anomaly else (None if lbl == "-" else "1"),
+                    timestamp,
+                    component,
+                    level,
+                    content,
+                    block_id,
+                ))
+                n += 1
+                file_n += 1
+                if len(rows) >= BATCH:
+                    _insert_raw(rows); rows = []
+                    if n % 500_000 == 0:
+                        _set_status("bgl_raw_v2", f"running:{n}")
+                        cb and cb(f"  BGL raw: {n:,} rows…")
+        cb and cb(f"  {log_path.name}: {file_n:,} lines ingested.")
     if rows:
         _insert_raw(rows)
-    _set_status("bgl_raw", f"done:{n}")
+    _set_status("bgl_raw_v2", f"done:{n}")
     cb and cb(f"BGL raw logs done ({n:,} rows).")
 
 
 def ingest_hdfs_raw(cb: Optional[Callable] = None) -> None:
-    if _already_done("hdfs_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='hdfs'"):
+    """Ingest HDFS raw logs from the pre-split files in LOG_ROOT.
+
+    Files (one-to-one with the processed txt-file sessions):
+      train.log         → line_numbers 0..N_TRAIN-1,               label=None
+      test_normal.log   → line_numbers N_TRAIN..,                  label=None
+      test_abnormal.log → line_numbers N_TRAIN+N_TEST_NORMAL..,    label='1'
+
+    Each line is stored with its extracted block ID so that
+    _find_window_for_raw can map any raw line to its session.
+    """
+    if _already_done("hdfs_raw_v2", "SELECT COUNT(*) FROM raw_logs WHERE dataset='hdfs'"):
         cb and cb("HDFS raw logs already in DB — skipping."); return
-    struct_path = LOG_ROOT / "HDFS_v1" / "HDFS.log_structured.csv"
-    test_path   = LOG_ROOT / "HDFS_v1" / "test.csv"
-    if not struct_path.exists():
-        _set_status("hdfs_raw", "skipped:missing_file")
-        cb and cb("HDFS structured CSV not found — skipping raw import.")
+
+    file_meta = [
+        (LOG_ROOT / "train.log",        False),  # all normal — no anomaly label
+        (LOG_ROOT / "test_normal.log",  False),
+        (LOG_ROOT / "test_abnormal.log", True),
+    ]
+    missing = [str(p) for p, _ in file_meta if not p.exists()]
+    if missing:
+        _set_status("hdfs_raw_v2", "skipped:missing_split_files")
+        cb and cb(f"HDFS split files not found ({', '.join(missing)}) — skipping raw import.")
         return
 
-    # Collect block IDs from test windows so we only import relevant rows
-    test_blk: set = set()
-    if test_path.exists():
-        with open(test_path, newline="", encoding="utf-8", errors="replace") as f:
-            for row in csv.DictReader(f):
-                bid = (row.get("BlockId") or "").strip()
-                if bid:
-                    test_blk.add(bid)
-        cb and cb(f"Loaded {len(test_blk):,} HDFS test block IDs.")
-
-    cb and cb("Importing HDFS raw logs (test windows only)…")
-    _set_status("hdfs_raw", "running:0")
+    # HDFS format: YYMMDD HHMMSS pid level component: content
+    cb and cb("Importing HDFS raw logs from split files…")
+    _set_status("hdfs_raw_v2", "running:0")
     with _conn(fast=True) as c:
         c.execute("DELETE FROM raw_logs WHERE dataset='hdfs'")
 
     rows: list = []
-    line_num = 0
-    inserted = 0
-    with open(struct_path, newline="", encoding="utf-8", errors="replace") as f:
-        for row in csv.DictReader(f):
-            line_num += 1
-            content = row.get("Content", "")
-            m = BLK_RE.search(content)
-            blk = m.group() if m else None
-            if test_blk and blk not in test_blk:
-                continue
-            rows.append((
-                "hdfs", line_num,
-                None,
-                f"{row.get('Date','')} {row.get('Time','')}".strip(),
-                row.get("Component"),
-                row.get("Level"),
-                content,
-                blk,
-            ))
-            inserted += 1
-            if len(rows) >= BATCH:
-                _insert_raw(rows); rows = []
-                if inserted % 500_000 == 0:
-                    _set_status("hdfs_raw", f"running:{inserted}")
-                    cb and cb(f"  HDFS raw: {inserted:,} rows…")
+    n = 0
+    for log_path, all_anomaly in file_meta:
+        file_n = 0
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip()
+                if not line:
+                    continue
+                parts = line.split(None, 4)
+                timestamp = f"{parts[0]} {parts[1]}" if len(parts) >= 2 else ""
+                level     = parts[3] if len(parts) > 3 else ""
+                component = parts[4].partition(": ")[0] if len(parts) > 4 else ""
+                blk       = BLK_RE.search(line)
+                blk       = blk.group() if blk else None
+                rows.append((
+                    "hdfs", n,
+                    "1" if all_anomaly else None,
+                    timestamp,
+                    component,
+                    level,
+                    line,      # full raw line as content
+                    blk,
+                ))
+                n += 1
+                file_n += 1
+                if len(rows) >= BATCH:
+                    _insert_raw(rows); rows = []
+                    if n % 1_000_000 == 0:
+                        _set_status("hdfs_raw_v2", f"running:{n}")
+                        cb and cb(f"  HDFS raw: {n:,} rows…")
+        cb and cb(f"  {log_path.name}: {file_n:,} lines ingested.")
     if rows:
         _insert_raw(rows)
-    _set_status("hdfs_raw", f"done:{inserted}")
-    cb and cb(f"HDFS raw logs done ({inserted:,} rows from {line_num:,} scanned).")
+    _set_status("hdfs_raw_v2", f"done:{n}")
+    cb and cb(f"HDFS raw logs done ({n:,} rows).")
 
 
 # ── Synthetic OpenStack log generator ────────────────────────────────────────
@@ -261,75 +364,82 @@ _OS_COMPONENTS = [
     "nova.api.openstack.requestlog",
 ]
 
+# Real tenant/user IDs from the LogHub OpenStack dataset
+_OS_TENANT_ID = "54fadb412c4e40cdbaed9335e4c35a9e"
+_OS_USER_ID   = "113d3a99c3da401fbd62cc2caa5b96d2"
+_OS_SRC_IP    = "10.11.10.1"
+
+# Templates match the exact format of the real openstack_*.log files:
+#   [req-{uuid} {user_id} {tenant_id} - - -] {ip} "METHOD /v2/{tenant}/... HTTP/1.1" status: N len: N time: N
 _NORMAL_MSGS = [
-    ('INFO',    "nova.osapi_compute.wsgi.server",
-     '{ip} "GET /v2/{proj}/servers/detail HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
-    ('INFO',    "nova.osapi_compute.wsgi.server",
-     '{ip} "GET /v2/{proj}/flavors HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
-    ('INFO',    "nova.osapi_compute.wsgi.server",
-     '{ip} "GET /v2/{proj}/os-hypervisors/detail HTTP/1.1" status: 200 len: {sz} time: {t:.4f}'),
-    ('INFO',    "nova.osapi_compute.wsgi.server",
-     '{ip} "POST /v2/{proj}/servers HTTP/1.1" status: 202 len: {sz} time: {t:.4f}'),
-    ('INFO',    "nova.osapi_compute.wsgi.server",
-     '{ip} "DELETE /v2/{proj}/servers/{srv} HTTP/1.1" status: 204 len: 0 time: {t:.4f}'),
-    ('INFO',    "nova.compute.manager",
-     '[instance: {inst}] VM started successfully.'),
-    ('INFO',    "nova.compute.manager",
-     '[instance: {inst}] Updating instance state to active.'),
-    ('INFO',    "nova.compute.manager",
-     '[instance: {inst}] Network info cache updated.'),
-    ('INFO',    "nova.compute.manager",
-     '[instance: {inst}] Terminating instance.'),
-    ('INFO',    "nova.scheduler.manager",
-     'Scheduling instance {inst} to host {host}.'),
-    ('INFO',    "nova.conductor.manager",
-     'Instance {inst} moved to state BUILD.'),
-    ('INFO',    "keystonemiddleware.auth_token",
-     'Received request for token validation.'),
-    ('INFO',    "nova.api.openstack.requestlog",
-     '{ip} "GET /v2.1/{proj}/os-aggregates HTTP/1.1" 200 {sz} {t:.4f}'),
+    ('INFO', "nova.osapi_compute.wsgi.server",
+     '[req-{req} {user} {proj} - - -] {ip} "GET /v2/{proj}/servers/detail HTTP/1.1" status: 200 len: {sz} time: {t}'),
+    ('INFO', "nova.osapi_compute.wsgi.server",
+     '[req-{req} {user} {proj} - - -] {ip} "GET /v2/{proj}/servers/{srv} HTTP/1.1" status: 200 len: {sz} time: {t}'),
+    ('INFO', "nova.osapi_compute.wsgi.server",
+     '[req-{req} {user} {proj} - - -] {ip} "GET /v2/{proj}/flavors HTTP/1.1" status: 200 len: {sz} time: {t}'),
+    ('INFO', "nova.osapi_compute.wsgi.server",
+     '[req-{req} {user} {proj} - - -] {ip} "POST /v2/{proj}/servers HTTP/1.1" status: 202 len: {sz} time: {t}'),
+    ('INFO', "nova.osapi_compute.wsgi.server",
+     '[req-{req} {user} {proj} - - -] {ip} "DELETE /v2/{proj}/servers/{srv} HTTP/1.1" status: 204 len: 0 time: {t}'),
+    ('INFO', "nova.compute.manager",
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] VM started successfully.'),
+    ('INFO', "nova.compute.manager",
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Took {t} seconds to deallocate network for instance.'),
+    ('INFO', "nova.compute.manager",
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Updating instance state to active.'),
+    ('INFO', "nova.virt.libvirt.driver",
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Creating image'),
+    ('INFO', "nova.compute.manager",
+     '[-] [instance: {inst}] VM Stopped (Lifecycle Event)'),
 ]
 
 _ABNORMAL_MSGS = [
     ('ERROR',   "nova.compute.manager",
-     '[instance: {inst}] Build of instance failed: No valid host was found.'),
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Build of instance failed: No valid host was found.'),
     ('ERROR',   "nova.compute.manager",
-     '[instance: {inst}] Error destroying instance on host {host}: Timeout.'),
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Error destroying instance on host {host}: Timeout.'),
     ('ERROR',   "nova.osapi_compute.wsgi.server",
-     '{ip} "POST /v2/{proj}/servers HTTP/1.1" status: 500 len: {sz} time: {t:.4f}'),
-    ('WARNING', "nova.scheduler.manager",
-     'No hosts available for instance {inst}. Retrying...'),
+     '[req-{req} {user} {proj} - - -] {ip} "POST /v2/{proj}/servers HTTP/1.1" status: 500 len: {sz} time: {t}'),
+    ('WARNING', "nova.virt.libvirt.imagecache",
+     '[req-{req} - - - - -] Unknown base file: /var/lib/nova/instances/_base/{inst}'),
     ('WARNING', "nova.compute.manager",
-     '[instance: {inst}] Timeout waiting for instance to become active.'),
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Timeout waiting for instance to become active.'),
     ('ERROR',   "nova.network.manager",
-     'Failed to allocate network for instance {inst}: Connection refused.'),
-    ('ERROR',   "keystonemiddleware.auth_token",
-     'Authorization failed: Token {tok} is invalid or expired.'),
+     '[req-{req} {user} {proj} - - -] Failed to allocate network for instance {inst}: Connection refused.'),
+    ('ERROR',   "nova.compute.manager",
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Instance failed to spawn: Insufficient resources.'),
     ('WARNING', "nova.conductor.manager",
-     'Instance {inst} entered ERROR state after {n} retries.'),
+     '[req-{req} {user} {proj} - - -] [instance: {inst}] Instance entered ERROR state after {n} retries.'),
 ]
 
 
 def _synth_val(seed: int, key: str) -> str:
-    """Generate a deterministic pseudo-random value for a template placeholder."""
+    """Generate deterministic values matching real OpenStack log format."""
     h = int(hashlib.md5(f"{seed}{key}".encode()).hexdigest(), 16)
     if key == "ip":
-        return f"10.0.{(h>>8)&255}.{h&255}"
+        return _OS_SRC_IP          # real source IP from dataset
     if key == "proj":
-        proj_ids = ["a1b2c3", "d4e5f6", "7g8h9i", "j0k1l2"]
-        return proj_ids[h % len(proj_ids)]
+        return _OS_TENANT_ID       # real tenant ID from dataset
+    if key == "user":
+        return _OS_USER_ID         # real user ID from dataset
+    if key == "req":
+        # UUID format: 8-4-4-4-12
+        hx = hashlib.md5(f"req{seed}".encode()).hexdigest()
+        return f"{hx[:8]}-{hx[8:12]}-{hx[12:16]}-{hx[16:20]}-{hx[20:32]}"
     if key == "srv":
-        return hashlib.md5(f"srv{seed}".encode()).hexdigest()[:8]
+        hx = hashlib.md5(f"srv{seed}".encode()).hexdigest()
+        return f"{hx[:8]}-{hx[8:12]}-{hx[12:16]}-{hx[16:20]}-{hx[20:32]}"
     if key == "inst":
-        return hashlib.md5(f"inst{seed}".encode()).hexdigest()[:8]
+        hx = hashlib.md5(f"inst{seed}".encode()).hexdigest()
+        return f"{hx[:8]}-{hx[8:12]}-{hx[12:16]}-{hx[16:20]}-{hx[20:32]}"
     if key == "host":
         return f"compute-node-{h % 4:02d}"
-    if key == "tok":
-        return hashlib.md5(f"tok{seed}".encode()).hexdigest()[:12]
     if key == "sz":
-        return str(128 + (h % 4096))
+        sizes = [1583, 1708, 1759, 1893, 2048, 1234, 3607, 661, 270]
+        return str(sizes[h % len(sizes)])
     if key == "t":
-        return f"{0.001 + (h % 500) / 10000:.4f}"
+        return f"{0.05 + (h % 400) / 1000:.7f}"
     if key == "n":
         return str(1 + h % 5)
     return str(h % 100)
@@ -359,12 +469,12 @@ def _ingest_os_synthetic_raw(cb: Optional[Callable] = None) -> None:
     """
     data_dir = Path(__file__).parent.parent / "data" / "OpenStack"
     if not data_dir.exists():
-        _set_status("os_raw", "skipped:missing_data_dir")
+        _set_status("os_raw_v2", "skipped:missing_data_dir")
         cb and cb("data/OpenStack not found — cannot generate synthetic raw logs.")
         return
 
     cb and cb("Generating synthetic OpenStack raw logs from event sequences…")
-    _set_status("os_raw", "running")
+    _set_status("os_raw_v2", "running")
     with _conn(fast=True) as c:
         c.execute("DELETE FROM raw_logs WHERE dataset='os'")
 
@@ -376,7 +486,7 @@ def _ingest_os_synthetic_raw(cb: Optional[Callable] = None) -> None:
 
     rows: list = []
     global_n  = 0   # global line_number counter
-    base_time = datetime(2021, 8, 29, 8, 0, 0)
+    base_time = datetime(2017, 5, 16, 0, 0, 0)
 
     for fname, label, block_id, templates in file_meta:
         fpath = data_dir / fname
@@ -414,7 +524,7 @@ def _ingest_os_synthetic_raw(cb: Optional[Callable] = None) -> None:
                         rows = []
     if rows:
         _insert_raw(rows)
-    _set_status("os_raw", f"done:{global_n}")
+    _set_status("os_raw_v2", f"done:{global_n}")
     cb and cb(f"Synthetic OpenStack raw logs done ({global_n:,} rows).")
 
 
@@ -430,13 +540,19 @@ def ingest_os_raw(cb: Optional[Callable] = None) -> None:
     Falls back to synthetic entries from data/OpenStack/*.txt when the source
     log files are not present (e.g. demo deployments without full data).
     """
-    if _already_done("os_raw", "SELECT COUNT(*) FROM raw_logs WHERE dataset='os'"):
+    if _already_done("os_raw_v2", "SELECT COUNT(*) FROM raw_logs WHERE dataset='os'"):
         cb and cb("OpenStack raw logs already in DB — skipping."); return
     os_dir = LOG_ROOT / "OpenStack"
     if not os_dir.exists():
-        cb and cb("OpenStack log directory not found — using synthetic raw logs from processed data.")
-        _ingest_os_synthetic_raw(cb)
-        return
+        # Fallback: bundled sample inside the project (data/OpenStack/raw/)
+        _project_raw = Path(__file__).parent.parent / "data" / "OpenStack" / "raw"
+        if _project_raw.exists():
+            cb and cb("Using bundled OpenStack log sample from data/OpenStack/raw/")
+            os_dir = _project_raw
+        else:
+            cb and cb("OpenStack log directory not found — using synthetic raw logs from processed data.")
+            _ingest_os_synthetic_raw(cb)
+            return
 
     # file → (label, block_id tag)
     file_meta = {
@@ -445,7 +561,7 @@ def ingest_os_raw(cb: Optional[Callable] = None) -> None:
         "openstack_abnormal.log":  ("1", "test_abnormal"),
     }
     cb and cb("Importing OpenStack raw logs…")
-    _set_status("os_raw", "running")
+    _set_status("os_raw_v2", "running")
     with _conn(fast=True) as c:
         c.execute("DELETE FROM raw_logs WHERE dataset='os'")
 
@@ -472,16 +588,16 @@ def ingest_os_raw(cb: Optional[Callable] = None) -> None:
                     rows.append((
                         "os", n, file_lbl,
                         m.group(2), m.group(5), m.group(4),
-                        m.group(6)[:500], block_tag,
+                        line, block_tag,
                     ))
                 else:
-                    rows.append(("os", n, file_lbl, None, None, None, line[:500], block_tag))
+                    rows.append(("os", n, file_lbl, None, None, None, line, block_tag))
                 n += 1
                 if len(rows) >= BATCH:
                     _insert_raw(rows); rows = []
     if rows:
         _insert_raw(rows)
-    _set_status("os_raw", f"done:{n}")
+    _set_status("os_raw_v2", f"done:{n}")
     cb and cb(f"OpenStack raw logs done ({n:,} rows).")
 
 

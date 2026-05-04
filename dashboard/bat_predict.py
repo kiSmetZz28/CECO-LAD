@@ -40,6 +40,8 @@ def main() -> None:
                         help="Inference YAML config path (relative to project root)")
     parser.add_argument("--max-models", type=int, default=9,
                         help="Maximum number of BAT checkpoints to load (for speed)")
+    parser.add_argument("--start", type=int, default=0,
+                        help="Skip the first N combinations (used to separate edge from cloud models)")
     args = parser.parse_args()
 
     t0 = time.time()
@@ -76,7 +78,11 @@ def main() -> None:
         arr = np.vstack([arr, pad])
     arr = arr[:win_size]                                 # [win_size, input_c]
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    try:
+        _cuda = torch.cuda.is_available()
+    except Exception:
+        _cuda = False
+    device = torch.device("cuda:0" if _cuda else "cpu")
     x = torch.from_numpy(arr[np.newaxis]).float().to(device)  # [1, win_size, input_c]
 
     # ── Load thresholds ───────────────────────────────────────────────────────
@@ -93,47 +99,45 @@ def main() -> None:
         _out({"error": f"Could not load thresholds: {exc}"})
         return
 
-    # ── Load BAT models and score ─────────────────────────────────────────────
+    # ── Load BAT models and score (parallel, 4 workers) ──────────────────────
+    # 4 workers balances parallelism vs disk I/O contention on container storage.
+    # 8 workers causes I/O saturation; sequential takes ~25s; 4 workers ~6-8s.
+    import concurrent.futures
     from ceco_core.models.EMAT import EMAT
     from ceco_core.utils.energy import compute_energy_batch
 
     search_keys  = ["num_epochs", "k", "e_layer_num", "batch_size"]
     combinations = list(product(*[cloud_cfg[k] for k in search_keys]))
+    combinations = combinations[args.start : args.start + args.max_models]
     model_dir    = ROOT / cloud_cfg.get("model_save_path", "")
     dataset_name = cloud_cfg.get("dataset", cfg.get("dataset", ""))
 
-    model_results = []
-    for combo in combinations:
-        if len(model_results) >= args.max_models:
-            break
+    def _run_one(combo):
         epochs, k_val, layers, bsz = combo
         mname = f"{dataset_name}_e{epochs}_k{k_val}_l{layers}_b{bsz}"
         ckpt  = model_dir / f"{mname}_checkpoint.pth"
-
         if not ckpt.exists() or mname not in thresholds_dict:
-            continue
-
+            return None
         thresh = thresholds_dict[mname]
         try:
             mdl = EMAT(win_size=win_size, enc_in=input_c, c_out=output_c, e_layers=layers)
-            # strict=False: distances attribute presence varies across attn.py versions;
-            # it is always re-computed correctly in __init__ so skipping is safe.
             mdl.load_state_dict(
                 torch.load(str(ckpt), map_location=device, weights_only=True),
                 strict=False,
             )
             mdl.to(device).eval()
-
             energy = compute_energy_batch(mdl, x, win_size)
             mean_e = float(energy.mean())
-            model_results.append({
-                "model":     mname,
-                "energy":    round(mean_e, 6),
-                "threshold": round(thresh, 6),
-                "vote":      1 if mean_e > thresh else 0,
-            })
+            del mdl
+            return {"model": mname, "energy": round(mean_e, 6),
+                    "threshold": round(thresh, 6),
+                    "vote": 1 if mean_e > thresh else 0}
         except Exception as exc:
             print(f"Skipping {mname}: {exc}", file=sys.stderr)
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        model_results = [r for r in ex.map(_run_one, combinations) if r is not None]
 
     if not model_results:
         _out({"error": "No BAT checkpoints found — download or train models first"})

@@ -60,6 +60,6 @@ def compute_energy_batch(
                 prior_loss += kl_p
 
         metric = torch.softmax((-series_loss - prior_loss), dim=-1)
-        energy = (metric * loss).detach().cpu().numpy()   # [B, win_size]
+        energy = (metric * loss).sum(dim=-1).detach().cpu().numpy()  # [B]
 
-    return energy.mean(axis=-1)   # [B] — one score per window
+    return energy

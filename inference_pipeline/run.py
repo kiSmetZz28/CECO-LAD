@@ -21,6 +21,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT))
+
 import numpy as np
 
 from ceco_core.utils.config import load_config, setup_logging
@@ -103,8 +106,9 @@ def run_inference(inference_config_path: str) -> None:
     logging.info("=== Stage 2: Mahalanobis Routing ===")
     tolerance     = cfg.get('routing_tolerance', 0.1)
     distance_type = cfg.get('routing_distance', 'ma')
+    win_size      = cfg.get('win_size', 100)
 
-    # energy_matrix rows are per-line; routing selects individual lines by distance.
+    # Routing on per-line energy scores → routed_indices are line indices.
     routed_indices: list = []
     if result.energy_matrix.shape[1] >= 2:
         try:
@@ -124,24 +128,23 @@ def run_inference(inference_config_path: str) -> None:
         n_route = max(1, int(len(margin) * tolerance))
         routed_indices = sorted(np.argsort(margin)[-n_route:].tolist())
 
-    # routed_indices = per-line indices, kept for the hybrid merge (line-level update).
-    # For cloud inference, derive the unique source windows that contain those lines so
-    # EMAT processes real windows instead of individually-padded single lines.
-    win_size = cfg.get('win_size', 100)
-    routed_window_indices = sorted(set(int(i) // win_size for i in routed_indices))
-
     logging.info(
-        "Routing: %d / %d lines selected → %d unique windows to cloud (tolerance=%.0f%%).",
-        len(routed_indices), len(result.predictions), len(routed_window_indices), tolerance * 100,
+        "Routing: %d / %d lines selected to cloud (tolerance=%.0f%%).",
+        len(routed_indices), len(result.predictions), tolerance * 100,
     )
     np.save(
         os.path.join(out_base, 'routed_indices.npy'),
         np.array(routed_indices, dtype=int),
     )
 
-    if routed_window_indices:
-        routed_windows = result.test_windows[np.array(routed_window_indices, dtype=int)]
-        np.save(os.path.join(out_base, 'routed_windows.npy'), routed_windows)
+    # Extract the feature vector of each routed line for cloud processing.
+    # cloud_runner pads each to win_size and runs EMAT — one prediction per line.
+    if routed_indices:
+        routed_lines = np.array([
+            result.test_windows[i // win_size][i % win_size]
+            for i in routed_indices
+        ], dtype=np.float32)  # [N_routed, input_c]
+        np.save(os.path.join(out_base, 'routed_lines.npy'), routed_lines)
 
     # ── Stages 3+4: Cloud BAT inference + hybrid merge ────────────────────
     # Always run in the hybrid conda env via cloud_runner.py subprocess so that

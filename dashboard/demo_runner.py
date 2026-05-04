@@ -164,12 +164,32 @@ def main() -> None:
     test_windows = np.concatenate(windows_list, axis=0)   # [N, win_size, input_c]
     ground_truth = np.concatenate(labels_list).astype(int)
 
-    device   = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # In demo/container mode cap the test set so inference finishes in ~3 min on CPU.
+    # Use evenly-spaced indices so both normal and anomalous windows are sampled.
+    # Config key takes priority over env var so each dataset can have its own limit.
+    demo_max = cfg.get("demo_max_windows", int(os.getenv("DEMO_MAX_WINDOWS", "0")))
+    if demo_max > 0 and len(test_windows) > demo_max:
+        idx = np.linspace(0, len(test_windows) - 1, demo_max, dtype=int)
+        test_windows = test_windows[idx]
+        ground_truth = ground_truth[idx]
+        logging.info(
+            "Demo mode: using %d / %d test windows (evenly sampled).",
+            demo_max, len(idx) + (len(np.concatenate(labels_list)) - demo_max),
+        )
+
+    try:
+        _cuda = torch.cuda.is_available()
+    except Exception:
+        _cuda = False
+    device = torch.device("cuda:0" if _cuda else "cpu")
     x_tensor = torch.from_numpy(test_windows).float().to(device)
 
-    # Select 3 lightweight BAT checkpoints as edge-proxy models.
-    # e3/k1/l3 variants are the smallest (fewest epochs, heads, and layers).
-    edge_combos = [(3, 1, 3, 32), (3, 1, 3, 64), (3, 1, 3, 96)]
+    # Select 3 lightweight BAT checkpoints as edge-proxy models using the
+    # smallest hyperparameter values available for this dataset's cloud config.
+    min_ep = min(cloud_cfg["num_epochs"])
+    min_k  = min(cloud_cfg["k"])
+    min_l  = min(cloud_cfg["e_layer_num"])
+    edge_combos = [(min_ep, min_k, min_l, bsz) for bsz in sorted(cloud_cfg["batch_size"])[:3]]
     n_edge = len(edge_combos)
 
     # Mirror edge_agent.py log format → frontend "Q-BAT models in parallel" indicator
@@ -239,27 +259,22 @@ def main() -> None:
         n_route = max(1, int(len(margin) * tolerance))
         routed_indices = sorted(np.argsort(margin)[-n_route:].tolist())
 
-    # demo_runner works at window granularity: energy_matrix has one row per
-    # window, so routed_indices ARE already window indices — no // win_size.
-    routed_window_indices = sorted(routed_indices)
-
-    # Mirror run.py log format → frontend routing indicator
+    # energy_matrix has one row per window, so routed_indices are window indices directly.
     logging.info(
-        "Routing: %d / %d lines selected → %d unique windows to cloud (tolerance=%.0f%%).",
-        len(routed_window_indices), len(predictions),
-        len(routed_window_indices), tolerance * 100,
+        "Routing: %d / %d windows selected to cloud (tolerance=%.0f%%).",
+        len(routed_indices), len(predictions), tolerance * 100,
     )
     np.save(
         os.path.join(out_base, "routed_indices.npy"),
-        np.array(routed_window_indices, dtype=int),
+        np.array(routed_indices, dtype=int),
     )
 
-    if not routed_window_indices:
+    if not routed_indices:
         logging.info("No windows routed to cloud — edge results are final.")
         logging.info("=== Inference complete. Outputs in '%s' ===", out_base)
         return
 
-    routed_windows = test_windows[np.array(routed_window_indices, dtype=int)]
+    routed_windows = test_windows[np.array(routed_indices, dtype=int)]
     np.save(os.path.join(out_base, "routed_windows.npy"), routed_windows)
 
     # ── Stage 3: Cloud BAT Ensemble ───────────────────────────────────────────
@@ -268,6 +283,9 @@ def main() -> None:
     cloud_cfg.setdefault("dataset", dataset)
     cloud_cfg.setdefault("win_size", win_size)
     cloud_cfg.setdefault("input_c", input_c)
+    # More parallel workers in demo mode: each model only has 1-2 batches of
+    # routed windows, so overhead per model is low and more threads help.
+    cloud_cfg.setdefault("max_parallel_models", os.cpu_count() or 8)
 
     # cloud_expert.run() logs in the exact format the frontend expects:
     #   "Cloud expert: N windows, M BAT checkpoints, …"
@@ -279,15 +297,13 @@ def main() -> None:
     # ── Stage 4: Hybrid Evaluation ────────────────────────────────────────────
     logging.info("=== Stage 4: Hybrid Evaluation ===")
     logging.info(
-        "Cloud preds: %d anomalous / %d routed windows.",
+        "Cloud preds: %d / %d routed windows anomalous.",
         int(cloud_preds.sum()), len(cloud_preds),
     )
 
-    # routed_window_indices are window indices; update predictions directly.
-    window_pred_map = {w: int(cloud_preds[j]) for j, w in enumerate(routed_window_indices)}
     hybrid_raw = predictions.copy()
-    for win_idx, cloud_pred in window_pred_map.items():
-        hybrid_raw[win_idx] = cloud_pred
+    for k, win_idx in enumerate(routed_indices):
+        hybrid_raw[win_idx] = int(cloud_preds[k])
 
     hybrid_adj = _point_adjust(ground_truth, hybrid_raw)
     np.save(os.path.join(out_base, "hybrid_preds.npy"), hybrid_adj)

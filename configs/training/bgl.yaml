@@ -6,8 +6,8 @@ output_c: 10
 dataset: "BGL"
 mode: "train"
 data_path: "data/BGL"
-# model_save_path: "checkpoints/bat/bgl"
-model_save_path: "/home/qinxuan.shi/Desktop/Ensemble/checkpoints/ensemble_bgl"
+model_save_path: "checkpoints/bat/bgl"
+# model_save_path: "/home/qinxuan.shi/Desktop/Ensemble/checkpoints/ensemble_bgl"
 
 num_epochs: [3, 6, 10]
 k: [3, 4, 5]

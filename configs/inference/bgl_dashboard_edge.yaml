@@ -2,6 +2,7 @@ batch_size: 64
 data_path: data/BGL
 data_seq_len: 10
 dataset: BGL
+demo_max_windows: 400
 edge_models:
 - checkpoint: checkpoints/qbat/bgl/BGL_e3_k4_l3_b32.pte
   name: qbat_e3_k4_l3_b32

@@ -2,6 +2,11 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# libstdc++6 is required by the pre-compiled executor_runner (ExecuTorch C++ binary)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+
 # CPU-only PyTorch (saves ~1.3 GB vs the default CUDA build)
 RUN pip install --no-cache-dir \
     torch --index-url https://download.pytorch.org/whl/cpu
@@ -16,48 +21,50 @@ RUN pip install --no-cache-dir \
     "pyyaml>=6.0" \
     "pandas>=1.5" \
     "tqdm>=4.0" \
-    "gdown>=4.6"
+    "gdown>=4.6" \
+    "huggingface_hub>=0.20"
 
-# ── Project source ────────────────────────────────────────────────────────────
-COPY ceco_core/                         /app/ceco_core/
-COPY inference_pipeline/__init__.py     /app/inference_pipeline/__init__.py
-COPY inference_pipeline/cloud_expert.py /app/inference_pipeline/cloud_expert.py
-COPY inference_pipeline/routing.py      /app/inference_pipeline/routing.py
-COPY dashboard/app.py                   /app/dashboard/app.py
-COPY dashboard/db.py                    /app/dashboard/db.py
-COPY dashboard/ingest.py                /app/dashboard/ingest.py
-COPY dashboard/index.html               /app/dashboard/index.html
-COPY dashboard/bat_predict.py           /app/dashboard/bat_predict.py
-COPY dashboard/cloud_runner.py          /app/dashboard/cloud_runner.py
-COPY dashboard/demo_runner.py           /app/dashboard/demo_runner.py
+# ── Core model code ───────────────────────────────────────────────────────────
+COPY ceco_core/ /app/ceco_core/
 
-# ── Static data (pre-computed results + log sequences + configs) ──────────────
-# Pre-computed inference results — shown immediately before any inference runs
-COPY outputs/   /app/outputs/
-# Preprocessed log sequences — pipeline view + StandardScaler fitting
-COPY data/      /app/data/
-# YAML inference configs (training and inference)
-COPY configs/   /app/configs/
+# ── Inference pipeline ────────────────────────────────────────────────────────
+COPY inference_pipeline/__init__.py      /app/inference_pipeline/__init__.py
+COPY inference_pipeline/cloud_expert.py  /app/inference_pipeline/cloud_expert.py
+COPY inference_pipeline/routing.py       /app/inference_pipeline/routing.py
+COPY inference_pipeline/edge_agent.py    /app/inference_pipeline/edge_agent.py
+COPY inference_pipeline/run.py           /app/inference_pipeline/run.py
+COPY inference_pipeline/evaluate.py      /app/inference_pipeline/evaluate.py
 
-# ── Download helper + startup script ─────────────────────────────────────────
-# spaces_startup.py downloads BAT checkpoints from Google Drive on first launch
-# (~3.5 GB, one-time; subsequent starts skip the download automatically).
+# Create the directory for executor_runner (downloaded at first launch by spaces_startup.py)
+RUN mkdir -p /app/inference_pipeline/executorch/cmake-out
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+COPY dashboard/app.py          /app/dashboard/app.py
+COPY dashboard/db.py           /app/dashboard/db.py
+COPY dashboard/ingest.py       /app/dashboard/ingest.py
+COPY dashboard/index.html      /app/dashboard/index.html
+COPY dashboard/bat_predict.py  /app/dashboard/bat_predict.py
+COPY dashboard/cloud_runner.py /app/dashboard/cloud_runner.py
+COPY dashboard/demo_runner.py  /app/dashboard/demo_runner.py
+
+# ── Static data ───────────────────────────────────────────────────────────────
+COPY outputs/  /app/outputs/
+COPY data/     /app/data/
+COPY configs/  /app/configs/
+
+# ── Q-BAT edge checkpoints (218 MB — bundled in image) ───────────────────────
+COPY checkpoints/qbat/ /app/checkpoints/qbat/
+
+# ── Download helper + startup (fetches BAT cloud checkpoints at first launch) ─
 COPY tools/download_checkpoints.py /app/tools/download_checkpoints.py
 COPY spaces_startup.py             /app/spaces_startup.py
 
 # ── Environment ───────────────────────────────────────────────────────────────
-# Use the container's single Python for both edge and cloud inference phases
 ENV EDGE_PYTHON=/usr/local/bin/python
 ENV CLOUD_PYTHON=/usr/local/bin/python
-
-# Demo mode: disable train / eval / convert; inference and predict stay enabled
 ENV DEMO_MODE=1
-
-# HF Spaces and most cloud platforms expect port 7860
 ENV PORT=7860
 
 EXPOSE 7860
 
-# spaces_startup.py checks for checkpoints, downloads if missing, then
-# launches dashboard/app.py via os.execv (same PID, correct signal handling)
 CMD ["python", "spaces_startup.py"]
