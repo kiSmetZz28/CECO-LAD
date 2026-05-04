@@ -78,14 +78,14 @@ def main() -> None:
     print("  Repo ready.\n")
 
     # ── 1. executor_runner binary ─────────────────────────────────────────────
-    print("── Step 1/8  executor_runner binary ──")
+    print("── Step 1/9  executor_runner binary ──")
     if RUNNER_PATH.exists():
         upload(api, repo, RUNNER_PATH, "executor_runner")
     else:
         print(f"  SKIP: {RUNNER_PATH} not found.")
 
     # ── 2. OpenStack raw log files ────────────────────────────────────────────
-    print("\n── Step 2/8  OpenStack raw logs ──")
+    print("\n── Step 2/9  OpenStack raw logs ──")
     missing = [f for f in OPENSTACK_LOGS if not f.exists()]
     if missing:
         print(f"  SKIP: log files not found: {[f.name for f in missing]}")
@@ -100,7 +100,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 3. BGL raw log split files ────────────────────────────────────────────
-    print("\n── Step 3/8  BGL raw log (split files) ──")
+    print("\n── Step 3/9  BGL raw log (split files) ──")
     bgl_split_files = [BGL_SPLIT_DIR / f for f in BGL_SPLIT_FILES]
     missing = [f for f in bgl_split_files if not f.exists()]
     if missing:
@@ -117,7 +117,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 4. HDFS raw log split files ───────────────────────────────────────────
-    print("\n── Step 4/8  HDFS raw log (split files) ──")
+    print("\n── Step 4/9  HDFS raw log (split files) ──")
     hdfs_files = [HDFS_SPLIT_DIR / f for f in HDFS_SPLIT_FILES]
     missing = [f for f in hdfs_files if not f.exists()]
     if missing:
@@ -134,7 +134,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 5. BGL data files ─────────────────────────────────────────────────────
-    print("\n── Step 5/8  BGL data files ──")
+    print("\n── Step 5/9  BGL data files ──")
     bgl_files = [BGL_DATA_DIR / f for f in BGL_DATA_FILES]
     missing = [f for f in bgl_files if not f.exists()]
     if missing:
@@ -150,7 +150,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 4. BAT OS checkpoints ─────────────────────────────────────────────────
-    print("\n── Step 6/8  BAT OS checkpoints ──")
+    print("\n── Step 6/9  BAT OS checkpoints ──")
     pth_files = list(BAT_OS_DIR.glob("*.pth")) if BAT_OS_DIR.exists() else []
     if not pth_files:
         print(f"  SKIP: no .pth files found in {BAT_OS_DIR}")
@@ -165,7 +165,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 5. BAT BGL checkpoints ────────────────────────────────────────────────
-    print("\n── Step 7/8  BAT BGL checkpoints ──")
+    print("\n── Step 7/9  BAT BGL checkpoints ──")
     pth_files = list(BAT_BGL_DIR.glob("*.pth")) if BAT_BGL_DIR.exists() else []
     if not pth_files:
         print(f"  SKIP: no .pth files found in {BAT_BGL_DIR}")
@@ -180,7 +180,7 @@ def main() -> None:
         zip_path.unlink()
 
     # ── 6. BAT HDFS checkpoints ───────────────────────────────────────────────
-    print("\n── Step 8/8  BAT HDFS checkpoints ──")
+    print("\n── Step 8/9  BAT HDFS checkpoints ──")
     pth_files = list(BAT_HDFS_DIR.glob("*.pth")) if BAT_HDFS_DIR.exists() else []
     if not pth_files:
         print(f"  SKIP: no .pth files found in {BAT_HDFS_DIR}")

@@ -257,7 +257,8 @@ OUTPUT_NP_FILES = [
 
 def _outputs_present(ds: str) -> bool:
     out_dir = ROOT / "outputs" / ds
-    required = ["edge_preds.npy", "hybrid_preds.npy"]
+    required = ["edge_preds.npy", "hybrid_preds.npy",
+                "edge_preds_per_model.npy", "cloud_preds_per_model.npy"]
     return all((out_dir / f).exists() for f in required)
 
 
