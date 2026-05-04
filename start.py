@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent
 # ── Asset locations ───────────────────────────────────────────────────────────
 EXECUTORCH_DIR    = ROOT / "inference_pipeline" / "executorch"
 EXECUTOR_RUNNER   = EXECUTORCH_DIR / "cmake-out" / "executor_runner"
-EXECUTORCH_GDRIVE = "1kWFsJfhUn2L-T9gQ-IuAt9kNjB86ToHo"
+EXECUTORCH_GDRIVE   = "1kWFsJfhUn2L-T9gQ-IuAt9kNjB86ToHo"  # ExecuTorch 0.5.0 pre-built
 
 QBAT_DIR     = ROOT / "checkpoints" / "qbat"
 QBAT_DATASETS = ["bgl", "hdfs", "os"]
@@ -131,22 +131,56 @@ def _extract(zip_path: Path, out_dir: Path) -> None:
 
 # ── Per-asset setup ───────────────────────────────────────────────────────────
 
+def _install_executorch_python_bindings() -> bool:
+    install_script = EXECUTORCH_DIR / "install_requirements.py"
+    if not install_script.exists():
+        print("  WARNING: install_requirements.py not found — Python bindings skipped.")
+        return False
+    print("  Installing ExecuTorch Python bindings …")
+    result = subprocess.run(
+        [sys.executable, str(install_script)],
+        cwd=str(EXECUTORCH_DIR),
+    )
+    if result.returncode == 0:
+        edge_req = ROOT / "environment" / "edge" / "requirements.txt"
+        if edge_req.exists():
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                            "-r", str(edge_req)], check=False)
+        print("  ExecuTorch Python bindings installed.")
+        return True
+    print("  WARNING: Python binding install failed — C++ executor_runner fallback will be used.")
+    return False
+
+
 def setup_executorch() -> bool:
-    if _executorch_ok():
+    bindings_ok = False
+    try:
+        from executorch.runtime import Runtime  # noqa: F401
+        bindings_ok = True
+    except ImportError:
+        pass
+
+    if _executorch_ok() and bindings_ok:
         print("[1/5] ExecuTorch — already present, skipping.")
         return True
-    print("[1/5] Downloading ExecuTorch (~1.4 GB) from Google Drive …")
-    _ensure_gdown()
-    zip_path = ROOT / "inference_pipeline" / "executorch.zip"
-    if not _gdrive_download(EXECUTORCH_GDRIVE, zip_path):
-        print("  WARNING: ExecuTorch download failed — edge inference unavailable.")
-        return False
-    _extract(zip_path, ROOT / "inference_pipeline")
-    if _executorch_ok():
-        print("  ExecuTorch ready.")
-        return True
-    print("  WARNING: executor_runner not found after extraction.")
-    return False
+
+    if not _executorch_ok():
+        print("[1/5] Downloading ExecuTorch 0.5.0 (~1.4 GB) from Google Drive …")
+        _ensure_gdown()
+        zip_path = ROOT / "inference_pipeline" / "executorch.zip"
+        if not _gdrive_download(EXECUTORCH_GDRIVE, zip_path):
+            print("  WARNING: ExecuTorch download failed — edge inference unavailable.")
+            return False
+        _extract(zip_path, ROOT / "inference_pipeline")
+        if not _executorch_ok():
+            print("  WARNING: executor_runner not found after extraction.")
+            return False
+
+    if not bindings_ok:
+        _install_executorch_python_bindings()
+
+    print("  ExecuTorch ready.")
+    return True
 
 
 def setup_qbat() -> bool:

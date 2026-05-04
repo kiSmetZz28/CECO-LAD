@@ -13,11 +13,10 @@
 
 ## How It Works
 
-CECO-LAD detects anomalies in system logs using a two-tier AI pipeline:
+CECO-LAD detects anomalies in system logs using a hybrid Cloud-Edge collaboration pipeline:
 
-- **Q-BAT edge models** run locally on every log line in parallel — no GPU or internet needed.
-- Only the **most uncertain lines** are forwarded to the **BAT cloud ensemble**, where 81 checkpoints re-score them.
-- The final prediction combines both tiers, delivering **cloud-level accuracy at near-edge speed**.
+- **Q-BAT edge models** run locally on resource-constrained edge devices.
+- Only the **most uncertain lines** are forwarded to the **BAT cloud ensemble** for more accurate reevaluation.
 
 <p align="center">
   <img src="pictures/framework.png" width="700">
@@ -25,20 +24,17 @@ CECO-LAD detects anomalies in system logs using a two-tier AI pipeline:
 
 ### Models
 
-| Model | Where | What |
-|-------|-------|------|
-| **EM-AT** | Cloud | Enhanced Anomaly Transformer — base learner with minimax energy loss |
-| **BAT** | Cloud | 81 EM-AT models with varied hyperparameters and bootstrap-resampled training data |
-| **Q-BAT** | Edge (CPU) | BAT checkpoints quantized to A8W4 format via ExecuTorch — runs without GPU |
+| Model     | Where      | What                                                                              |
+| --------- | ---------- | --------------------------------------------------------------------------------- |
+| **BAT**   | Cloud      | 81 EM-AT models with varied hyperparameters and bootstrap-resampled training data |
+| **Q-BAT** | Edge (CPU) | BAT checkpoints quantized to A8W4 format via ExecuTorch                           |
+| **EM-AT** | Cloud      | EM-GMM Enhanced Anomaly Transformer — base learner                                |
 
-### Pipeline
+### Framework Overview
 
-| Stage | Description |
-|-------|-------------|
-| **1. Edge scan** | All Q-BAT models score every log line in parallel; majority vote gives edge prediction |
-| **2. Routing** | The most uncertain 10% of lines (by Mahalanobis distance) are forwarded to the cloud |
-| **3. Cloud re-check** | All 81 BAT checkpoints re-score the routed lines; majority vote gives cloud prediction |
-| **4. Merge** | Cloud predictions replace edge predictions at routed positions; point-adjusted metrics are reported |
+System logs are first generated from diverse servers and applications and collected by distributed log collection servers. A log processing pipeline then parses raw log messages into structured formats, partitions them into sequences, and converts them into feature matrices as input for the anomaly detector.
+
+For deployment in heterogeneous cloud-edge environments, CECO-LAD adopts a collaborative inference strategy: the BAT model is hosted on the cloud server, while the lightweight Q-BAT model runs on resource-constrained edge devices. A Mahalanobis distance-based routing policy enables collaborative anomaly analysis, forwarding hard cases from the edge to the cloud for more accurate prediction. Finally, the Green-LADE method is integrated to assess computational resource efficiency, quantifying the trade-off between resource consumption and detection capability across cloud and edge deployments.
 
 ---
 
@@ -53,7 +49,7 @@ CECO-LAD/
 ├── training_pipeline/         # BAT ensemble training and threshold evaluation
 ├── edge_pipeline/             # Q-BAT quantization (BAT → ExecuTorch .pte)
 ├── inference_pipeline/        # Full edge → routing → cloud pipeline
-│   └── executorch/            # Pre-built ExecuTorch runtime (downloaded by start.py)
+│   └── executorch/            # Pre-built ExecuTorch 0.5.0 runtime (downloaded by start.py)
 ├── dashboard/                 # FastAPI + single-page web dashboard
 │
 ├── configs/                   # Training and inference YAML configs per dataset
@@ -97,10 +93,10 @@ Open **http://localhost:8765** in your browser.
 
 All commands run from the project root. Two Conda environments are needed:
 
-| Environment | Purpose |
-|-------------|---------|
-| `ceco-lad` | Dashboard, training, evaluation, edge inference |
-| `hybrid` | Cloud BAT inference (81 checkpoints) |
+| Environment | Purpose                                         |
+| ----------- | ----------------------------------------------- |
+| `ceco-lad`  | Dashboard, training, evaluation, edge inference |
+| `hybrid`    | Cloud BAT inference (81 checkpoints)            |
 
 ### Step 1 — Set up environments
 
@@ -119,7 +115,7 @@ pip install -r environment/cloud/requirements.txt --extra-index-url https://down
 pip install -e .
 ```
 
-> ExecuTorch is downloaded automatically by `start.py` — no manual compilation needed. Linux/macOS only; Windows users: use WSL2.
+> ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) is downloaded and its Python bindings installed automatically by `start.py` — no manual compilation needed. Linux/macOS only; Windows users: use WSL2.
 
 ### Step 2 — Download pre-trained models
 
@@ -172,6 +168,7 @@ Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset
 Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
 
 For local use:
+
 ```bash
 conda activate ceco-lad
 python start.py   # or python dashboard/app.py if assets are already present
