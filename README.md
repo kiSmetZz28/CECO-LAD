@@ -24,9 +24,8 @@ CECO-LAD automatically detects anomalies in system logs using a two-tier AI appr
 
 ## Table of Contents
 
-1. [Requirements](#requirements)
-2. [Quick Start — Dashboard](#quick-start--dashboard)
-3. [Full Setup](#full-setup)
+1. [Quick Start — Dashboard](#quick-start--dashboard)
+2. [Full Setup](#full-setup)
    - [Step 1 — Set up the environments](#step-1--set-up-the-environments)
    - [Step 2 — Download pre-trained models](#step-2--download-pre-trained-models)
    - [Step 3 — Generate detection thresholds](#step-3--generate-detection-thresholds)
@@ -37,54 +36,6 @@ CECO-LAD automatically detects anomalies in system logs using a two-tier AI appr
 5. [Repository Structure](#repository-structure)
 6. [How It Works](#how-it-works)
 7. [Results](#results)
-8. [Troubleshooting](#troubleshooting)
-9. [Citation](#citation)
-
----
-
-## Requirements
-
-### Hardware
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| RAM | 8 GB | 16 GB |
-| Disk | 15 GB free | 30 GB free |
-| GPU | Not required | NVIDIA GPU with CUDA 12.4 (speeds up training ~10×) |
-
-> **A GPU is only needed for training (Step 5).** Evaluation, inference, and the dashboard all run on CPU.
-
-> **Disk note:** `start.py` downloads ~4 GB by default (ExecuTorch + Q-BAT + raw logs). BAT checkpoints add ~3.5 GB per dataset (up to ~10.5 GB for all three) and can be skipped with `--no-bat`.
-
-### Operating System
-
-| Task | Linux | macOS | Windows |
-|------|-------|-------|---------|
-| Training, evaluation, dashboard | ✅ | ✅ | ✅ |
-| Edge inference with ExecuTorch | ✅ | ✅ | ⚠️ Use WSL2 |
-
-### Prerequisites: Conda and Git
-
-<details>
-<summary><b>Install Conda (click to expand)</b></summary>
-
-1. Go to https://docs.conda.io/en/latest/miniconda.html
-2. Download and run the installer for your OS
-3. Restart your terminal
-4. Verify: `conda --version`
-
-</details>
-
-<details>
-<summary><b>Install Git (click to expand)</b></summary>
-
-- **Linux:** `sudo apt install git`
-- **macOS:** `xcode-select --install`
-- **Windows:** https://git-scm.com/download/win
-
-Verify: `git --version`
-
-</details>
 
 ---
 
@@ -607,106 +558,20 @@ Routing operates at the **line level** (individual log events), not at the windo
 
 ## Results
 
+### OpenStack
+
 <p align="center">
   <img src="pictures/openstack_results.png" width="700">
 </p>
+
+### HDFS
 
 <p align="center">
   <img src="pictures/hdfs_results.png" width="700">
 </p>
 
+### BGL
+
 <p align="center">
   <img src="pictures/bgl_results.png" width="700">
 </p>
-
----
-
-## Troubleshooting
-
-**`ModuleNotFoundError: No module named 'ceco_core'`**
-
-Run all commands from the project root and make sure the package is installed:
-```bash
-cd /path/to/CECO-LAD
-pip install -e .
-```
-
-**`ModuleNotFoundError: No module named 'executorch'`**
-
-ExecuTorch was not downloaded yet. Run:
-```bash
-python start.py --setup-only
-```
-
-**`FileNotFoundError: outputs/os/thresholds_cloud.yaml`**
-
-Run Step 3 (evaluate) before Step 4 (infer):
-```bash
-python run.py eval os
-```
-
-**`FileNotFoundError: outputs/os/routed_lines.npy`**
-
-The edge phase has not been run yet. Run the full pipeline first:
-```bash
-python run.py infer os
-```
-Or run only the cloud phase after the edge phase completes:
-```bash
-conda activate hybrid
-python dashboard/cloud_runner.py --config configs/inference/os.yaml
-```
-
-**`FileNotFoundError: checkpoints/bat/os/...`**
-
-Checkpoints have not been downloaded. Run:
-```bash
-python start.py --setup-only
-# or for a specific dataset only:
-python tools/download_checkpoints.py --dataset os
-```
-
-**`CUDA out of memory` during training**
-
-Reduce batch sizes in `configs/training/{dataset}.yaml`:
-```yaml
-batch_size: [32]
-```
-
-**Dashboard shows "Database: Empty" after a long wait**
-
-Check that the processed data files exist:
-```bash
-ls data/OpenStack/ data/BGL/ data/HDFS/
-```
-
-**Dashboard `Start Analysis` button has no effect**
-
-Verify all prerequisites:
-1. Both environments exist: `conda env list`
-2. Threshold file exists: `ls outputs/{dataset}/thresholds_cloud.yaml`
-3. Q-BAT checkpoints exist: `ls checkpoints/qbat/{dataset}/`
-4. ExecuTorch is present: `python start.py --status`
-
-**`[cache] Skip ... Torch not compiled with CUDA enabled`**
-
-This warning appears when the `ceco-lad` environment uses a CPU-only PyTorch build. The in-RAM model cache will not load, but single-log predictions automatically fall back to the `hybrid` environment subprocess. This does not affect full pipeline inference results.
-
-**Dashboard is slow on first single-log prediction**
-
-On first use, the dashboard loads all 81 BAT models into RAM (~3.5 GB per dataset). Subsequent predictions are fast (2–3 seconds). The first prediction may take up to 90 seconds while models load.
-
----
-
-## Citation
-
-If you use CECO-LAD in your research, please cite:
-
-```bibtex
-@article{cecolad2025,
-  title   = {CECO-LAD: Cloud-Edge Collaborative Log Anomaly Detection},
-  author  = {},
-  journal = {},
-  year    = {2025}
-}
-```
