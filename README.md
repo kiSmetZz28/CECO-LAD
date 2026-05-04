@@ -66,6 +66,10 @@ CECO-LAD/
 
 ## Quick Start — Dashboard
 
+Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
+
+For local use:
+
 ```bash
 # 1. Clone
 git clone https://github.com/kiSmetZz28/CECO-LAD.git
@@ -83,7 +87,7 @@ pip install gdown huggingface_hub
 python start.py
 ```
 
-Open **http://localhost:8765** in your browser.
+Open **http://localhost:8765**. A built-in **? Help** button guides you through all features.
 
 > `start.py` automatically downloads all required assets (~4 GB) on first run. On first launch the **Database** indicator shows **Loading** while log data is imported (~1–2 min).
 
@@ -93,23 +97,20 @@ Open **http://localhost:8765** in your browser.
 
 All commands run from the project root. Two Conda environments are needed:
 
-| Environment | Purpose                                         |
-| ----------- | ----------------------------------------------- |
-| `ceco-lad`  | Dashboard, training, evaluation, edge inference |
-| `hybrid`    | Cloud BAT inference (81 checkpoints)            |
+| Environment | Purpose                                                      |
+| ----------- | ------------------------------------------------------------ |
+| `ceco-lad`  | Dashboard, evaluation, edge inference (CPU)                  |
+| `hybrid`    | Training (GPU recommended) and cloud BAT inference           |
 
 ### Step 1 — Set up environments
 
 ```bash
-# ceco-lad (CPU)
+# ceco-lad (CPU — for dashboard and edge inference)
 conda create -yn ceco-lad python=3.10.0 && conda activate ceco-lad
 pip install torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cpu
 pip install -r environment/cloud/requirements.txt && pip install -e . && pip install gdown huggingface_hub
 
-# ceco-lad (GPU — recommended for training)
-pip install -r environment/cloud/requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
-
-# hybrid
+# hybrid (GPU — for training and cloud inference)
 conda create -yn hybrid python=3.10.0 && conda activate hybrid
 pip install -r environment/cloud/requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
 pip install -e .
@@ -120,39 +121,60 @@ pip install -e .
 ### Step 2 — Download pre-trained models
 
 ```bash
-python start.py --setup-only                              # everything
-python tools/download_checkpoints.py --dataset bgl        # one dataset
-python tools/download_checkpoints.py --type qbat          # Q-BAT only (~220 MB)
+# Download everything (ExecuTorch + Q-BAT + raw logs + BAT checkpoints for all datasets)
+python start.py --setup-only
+
+# Download BAT checkpoints for a specific dataset only
+python tools/download_checkpoints.py --dataset bgl    # BGL only
+python tools/download_checkpoints.py --dataset hdfs   # HDFS only
+python tools/download_checkpoints.py --dataset os     # OpenStack only
+
+# Download Q-BAT edge models only (~220 MB total, no BAT needed for edge-only inference)
+python tools/download_checkpoints.py --type qbat
 ```
 
-### Step 3 — Generate detection thresholds
+### Step 3 — Run inference
+
+Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction (~5–15 min per dataset on CPU).
+
+```bash
+conda activate ceco-lad
+python run.py infer os
+python run.py infer bgl
+python run.py infer hdfs
+```
+
+**Run edge only** (no cloud re-check):
+```bash
+conda activate ceco-lad
+python -m inference_pipeline.run --config configs/inference/os.yaml --edge-only
+```
+
+**Run cloud re-check only** (requires edge outputs to already exist):
+```bash
+conda activate hybrid
+python dashboard/cloud_runner.py --config configs/inference/os.yaml
+```
+
+---
+
+## Advanced Options
+
+### Train from scratch
+
+```bash
+conda activate hybrid   # GPU recommended — 2–8 hours per dataset
+python run.py train os && python run.py train bgl && python run.py train hdfs
+```
+
+Runs a hyperparameter sweep — 81 models per dataset. Then regenerate thresholds:
 
 ```bash
 conda activate ceco-lad
 python run.py eval os && python run.py eval bgl && python run.py eval hdfs
 ```
 
-Evaluates the BAT ensemble on the test set, fits a GMM, and writes `outputs/{dataset}/thresholds_cloud.yaml`.
-
-### Step 4 — Run inference
-
-```bash
-conda activate ceco-lad
-python run.py infer os    # ~5–15 min per dataset on CPU
-python run.py infer bgl
-python run.py infer hdfs
-```
-
-### Step 5 — (Optional) Train from scratch
-
-```bash
-conda activate ceco-lad   # or hybrid for GPU
-python run.py train os && python run.py train bgl && python run.py train hdfs
-```
-
-Runs a hyperparameter sweep — 81 models per dataset. GPU strongly recommended (2–8 hours per dataset). Then re-run Step 3.
-
-### Step 6 — (Optional) Convert to edge models
+### Convert to edge models
 
 ```bash
 conda activate ceco-lad
@@ -162,19 +184,6 @@ python run.py convert os && python run.py convert bgl && python run.py convert h
 Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset}/`. Skip if you downloaded Q-BAT checkpoints in Step 2.
 
 ---
-
-## Using the Dashboard
-
-Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
-
-For local use:
-
-```bash
-conda activate ceco-lad
-python start.py   # or python dashboard/app.py if assets are already present
-```
-
-Open **http://localhost:8765**. A built-in **? Help** button guides you through all features.
 
 ---
 
