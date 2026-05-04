@@ -74,12 +74,13 @@ api.upload_folder(
         "inference_pipeline/executorch/**",
         # Local database — rebuilt from scratch on startup
         "dashboard/ceco_lad.db",
-        # Large output arrays that are only used for the Results-tab energy chart;
-        # NOT needed for single-log prediction or the main pipeline display.
-        # Excluded to stay within the 1 GB HF Space storage limit.
-        "outputs/*/energy_matrix.npy",     # 127 MB (hdfs) + 15 MB (bgl) + 2 MB (os)
-        "outputs/*/edge_preds_raw.npy",    # duplicate of edge_preds (not used by dashboard)
-        "outputs/*/routed_lines.npy",      # only used by cloud_runner subprocess
+        # Large output arrays excluded to stay within the 1 GB HF Space storage limit.
+        # Per-model arrays are downloaded at startup via spaces_startup.py from HF assets.
+        "outputs/*/energy_matrix.npy",
+        "outputs/*/edge_preds_raw.npy",
+        "outputs/*/routed_lines.npy",
+        "outputs/*/edge_preds_per_model.npy",
+        "outputs/*/cloud_preds_per_model.npy",
         # Dev / CI artefacts
         ".git/**",
         "**/__pycache__/**",

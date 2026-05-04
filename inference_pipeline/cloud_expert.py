@@ -69,15 +69,15 @@ def _run_one_bat(
             energy_parts.append(
                 compute_energy_batch(model, x[start:start + infer_batch_size], win_size)
             )
-    energy = np.concatenate(energy_parts)   # [N_windows, win_size]
+    energy = np.concatenate(energy_parts)
 
-    del model   # release GPU memory for this thread
+    del model
 
     thresh = thresholds[model_name]
-    preds  = (energy > thresh).astype(int)  # [N_windows, win_size]
+    preds  = (energy > thresh).astype(int)
 
     logging.info("BAT model '%s' done.", model_name)
-    return preds.reshape(-1, 1)             # [N_windows * win_size, 1] — one per line
+    return preds.reshape(-1, 1)
 
 
 def run(windows: np.ndarray, config: dict) -> np.ndarray:

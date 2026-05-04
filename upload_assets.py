@@ -41,6 +41,14 @@ BAT_BGL_DIR   = ROOT / "checkpoints" / "bat" / "bgl"
 BAT_HDFS_DIR  = ROOT / "checkpoints" / "bat" / "hdfs"
 RUNNER_PATH   = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 
+# ── Pre-computed inference outputs (npy arrays) ───────────────────────────────
+OUTPUT_NP_FILES = [
+    "ground_truth.npy", "edge_preds.npy", "edge_preds_raw.npy",
+    "hybrid_preds.npy", "cloud_preds.npy",
+    "energy_matrix.npy", "routed_indices.npy",
+    "edge_preds_per_model.npy", "cloud_preds_per_model.npy",
+]
+
 
 def upload(api: HfApi, repo: str, local: Path, remote: str) -> None:
     print(f"  Uploading {local.name} ({local.stat().st_size // 1024 // 1024} MB) → {remote} …")
@@ -184,6 +192,20 @@ def main() -> None:
             check=True,
         )
         upload(api, repo, zip_path, "bat/hdfs.zip")
+        zip_path.unlink()
+
+    # ── Pre-computed npy outputs (prediction results + per-model arrays) ─────────
+    print("\n── Step 9/9  Pre-computed inference outputs (npy) ──")
+    for ds in ("bgl", "hdfs", "os"):
+        out_dir = ROOT / "outputs" / ds
+        files   = [out_dir / f for f in OUTPUT_NP_FILES if (out_dir / f).exists()]
+        if not files:
+            print(f"  SKIP {ds}: no npy files found in {out_dir}"); continue
+        zip_path = Path(tempfile.mktemp(suffix=".zip"))
+        total_mb = sum(f.stat().st_size for f in files) // 1024 // 1024
+        print(f"  Zipping {len(files)} {ds.upper()} npy files (~{total_mb} MB)…")
+        subprocess.run(["zip", "-j", str(zip_path)] + [str(f) for f in files], check=True)
+        upload(api, repo, zip_path, f"outputs/{ds}.zip")
         zip_path.unlink()
 
     print("\n" + "=" * 60)

@@ -133,8 +133,7 @@ select:focus{outline:none;border-color:var(--blue);}
 .tab-pane.active{display:block;}
 
 /* ── 3-column pipeline view ────────────────────────────── */
-.pl-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;}
-@media(max-width:900px){.pl-cols{grid-template-columns:1fr;}}
+.pl-cols{display:grid;grid-template-columns:1fr;gap:10px;align-items:start;}
 
 .pl-col{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;}
 .pl-col-hdr{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--card);}
@@ -341,7 +340,7 @@ select:focus{outline:none;border-color:var(--blue);}
 .pred-kpi{text-align:center;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 10px;min-width:64px;}
 .pred-kpi .pk-n{font-size:18px;font-weight:700;line-height:1;}
 .pred-kpi .pk-l{font-size:9px;color:var(--muted);margin-top:2px;}
-.pred-model-row{display:flex;justify-content:space-between;align-items:center;font-size:9px;font-family:monospace;padding:1px 4px;border-radius:3px;}
+.pred-model-row{display:flex;align-items:center;gap:4px;font-size:9px;font-family:monospace;padding:2px 5px;border-radius:3px;}
 
 /* ── Window detail modal ───────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:30px 16px;overflow-y:auto;}
@@ -727,27 +726,14 @@ select:focus{outline:none;border-color:var(--blue);}
       <!-- ── TAB: Pipeline ─────────────────────────── -->
       <div class="tab-pane active" id="pane-pipeline">
 
-        <div style="margin-bottom:14px">
-          <p style="font-size:12px;color:var(--muted);line-height:1.7">
-            <strong style="color:var(--text)">Raw log messages</strong> →
-            <strong style="color:var(--text)">Processed data</strong>
-            (StandardScaler-normalized context window matrix — actual model input).
-            Inference predictions are in the <strong style="color:var(--text)">Results</strong> tab.
-          </p>
-        </div>
-
         <!-- Controls row -->
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
-          <!-- Train / Test switch -->
-          <div class="pill-group" id="plSplitGroup">
-            <button class="pill-btn" id="plSplitTrain" onclick="setSplit('train',this)">Train</button>
-            <button class="pill-btn active" id="plSplitTest"  onclick="setSplit('test',this)">Test</button>
-          </div>
-          <!-- Label filter -->
-          <div class="pill-group" id="plLabelGroup">
-            <button class="pill-btn active"   id="plLabelAll"    onclick="setRawFilter('',this)">All</button>
-            <button class="pill-btn pill-norm" id="plLabelNormal" onclick="setRawFilter('0',this)">Normal</button>
-            <button class="pill-btn pill-anom" id="plLabelAnom"   onclick="setRawFilter('1',this)">Anomaly</button>
+          <!-- Combined split + label filter -->
+          <div class="pill-group" id="plViewGroup">
+            <button class="pill-btn pill-norm" id="plViewTrainNormal"  onclick="setView('train','0',this)">Train-normal</button>
+            <button class="pill-btn active"    id="plViewTestAll"      onclick="setView('test','',this)">Test-All</button>
+            <button class="pill-btn pill-norm" id="plViewTestNormal"   onclick="setView('test','0',this)">Test-normal</button>
+            <button class="pill-btn pill-anom" id="plViewTestAnomaly"  onclick="setView('test','1',this)">Test-anomaly</button>
           </div>
         </div>
 
@@ -769,21 +755,6 @@ select:focus{outline:none;border-color:var(--blue);}
               <button class="btn" id="plRawPrev" onclick="plLoadRaw(PL.rawPage-1)" disabled>←</button>
               <span id="plRawPagerInfo">—</span>
               <button class="btn" id="plRawNext" onclick="plLoadRaw(PL.rawPage+1)" disabled>→</button>
-            </div>
-          </div>
-
-          <!-- Column 2: Processed Sessions -->
-          <div class="pl-col">
-            <div class="pl-col-hdr">
-              <span class="ph-icon">🗂️</span><strong class="ph-title">Processed Data</strong>
-            </div>
-            <div class="pl-body" id="plSessBody">
-              <div class="empty" style="padding:24px"><p>Data is loading…</p></div>
-            </div>
-            <div class="pl-pager">
-              <button class="btn" id="plSessPrev" onclick="plLoadSessions(PL.sessPage-1)" disabled>←</button>
-              <span id="plSessPagerInfo">—</span>
-              <button class="btn" id="plSessNext" onclick="plLoadSessions(PL.sessPage+1)" disabled>→</button>
             </div>
           </div>
 
@@ -1726,39 +1697,18 @@ const PL = {
 let _plRawSearchTimer = null;
 function plRawDeb(){ clearTimeout(_plRawSearchTimer); _plRawSearchTimer=setTimeout(()=>plLoadRaw(0),350); }
 
-function setSplit(split, btn) {
+function setView(split, label, btn) {
   PL.split = split;
-  PL.rawPage = 0; PL.sessPage = 0;
-  PL.labelFilter = '';
+  PL.labelFilter = label;
+  PL.rawPage = 0;
   closeRawPredict();
-  document.querySelectorAll('#plSplitGroup .pill-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#plViewGroup .pill-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.querySelectorAll('#plLabelGroup .pill-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('plLabelAll').classList.add('active');
-  // Train split has no anomalies — hide the Anomaly filter to prevent empty loads
-  const anomBtn = document.getElementById('plLabelAnom');
-  if (anomBtn) anomBtn.style.display = (split === 'train') ? 'none' : '';
   plLoad();
 }
 
-function setLabelFilter(lbl, btn) {
-  PL.labelFilter = lbl;
-  document.querySelectorAll('#plLabelGroup .pill-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  plLoadSessions(0);
-  plRenderExec(0);
-}
-
-function setRawFilter(lbl, btn) {
-  PL.labelFilter = lbl;
-  PL.rawPage = 0;
-  document.querySelectorAll('#plLabelGroup .pill-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  plLoadRaw(0);
-}
-
 async function plLoad() {
-  await Promise.all([plLoadRaw(0), plLoadSessions(0), plLoadResults()]);
+  await Promise.all([plLoadRaw(0), plLoadResults()]);
 }
 
 /* Raw logs column */
@@ -1784,14 +1734,16 @@ async function plLoadRaw(page) {
         // Encode content for data attribute — no quotes, no newlines
         const safeContent = (r.content||'').substring(0, 600).replace(/"/g,'&quot;');
         const safeBid     = (r.block_id||'').replace(/"/g,'&quot;');
+        const isTrain = PL.split === 'train';
         return `<div class="pl-row${isAnom?' anom-row':''}"
             data-line="${r.line_number}" data-bid="${safeBid}" data-content="${safeContent}"
-            onclick="selectRawLog(this)" title="Click to predict">
+            ${isTrain ? '' : 'onclick="selectRawLog(this)" title="Click to predict"'}
+            style="${isTrain ? 'cursor:default' : ''}">
           <div class="pr-line">
             <span class="pr-idx">L${r.line_number}</span>
             <span class="pr-badge ${isAnom?'anom':'norm'}">${isAnom?'ANOM':'NORM'}</span>
             <span class="pr-ts">${esc(r.timestamp?.substring(0,19)||'—')}</span>
-            <span style="margin-left:auto;font-size:9px;color:var(--blue);opacity:.7">▶ predict</span>
+            ${isTrain ? '' : '<span style="margin-left:auto;font-size:9px;color:var(--blue);opacity:.7">▶ predict</span>'}
           </div>
           <div class="pr-line">
             <span style="font-size:10px;font-weight:600;color:${lvlClr}">${esc(r.level||'')}</span>
@@ -1997,18 +1949,17 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
       <div style="font-size:9px;color:var(--muted)">${nAnom}/${nTotal} anomaly votes (${pct}%)</div>`;
   }
 
-  function modelBreakdown(models, label) {
+  function modelBreakdown(models, maxH) {
     if (!models?.length) return '';
-    return `<details style="margin-top:6px"><summary style="font-size:10px;color:var(--muted);cursor:pointer">
-        ${label} per-model breakdown (${models.length})</summary>
-      <div style="max-height:90px;overflow-y:auto;margin-top:4px;border:1px solid var(--border);border-radius:5px">
-      ${models.map(m=>`<div class="pred-model-row"
-          style="background:${m.vote?'rgba(220,38,38,.05)':'rgba(22,163,74,.05)'}">
-          <span style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis">${m.model}</span>
-          <span style="color:var(--muted)">${m.energy.toFixed(5)} / ${m.threshold.toFixed(5)}</span>
-          <span style="font-weight:700;color:${m.vote?'var(--red)':'var(--green)'}">${m.vote?'ANOM':'NORM'}</span>
-        </div>`).join('')}
-      </div></details>`;
+    const rows = models.map(m => {
+      const col = m.vote ? 'var(--red)' : 'var(--green)';
+      return `<div class="pred-model-row" style="background:${m.vote?'rgba(220,38,38,.05)':'rgba(22,163,74,.05)'}">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${m.model}</span>
+        <span style="flex:0 0 120px;text-align:right;color:var(--muted);font-size:9px">threshold: ${m.threshold.toFixed(4)}</span>
+        <span style="flex:0 0 34px;text-align:right;font-weight:700;color:${col}">${m.vote?'ANOM':'NORM'}</span>
+      </div>`;
+    }).join('');
+    return `<div style="max-height:${maxH}px;overflow-y:auto;border:1px solid var(--border);border-radius:5px;margin-top:6px">${rows}</div>`;
   }
 
   const edge    = d.edge    || {};
@@ -2041,15 +1992,15 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
       </div>
     </div>
 
-    <!-- Stage breakdown -->
+    <!-- Stage breakdown: Edge + Routing side by side -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
 
       <!-- Edge AI -->
       <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
-        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge AI (${edgeN>1?edgeN+' Q-BAT models':'Q-BAT'})</div>
+        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge (Q-BAT)</div>
         <span class="pr-badge ${edgeIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${edgeIsAnom?'ANOMALY':'NORMAL'}</span>
         ${edgeN>1?voteBar(edge.n_anomaly_votes??0, edgeN, edgeIsAnom?'var(--red)':'var(--green)'):''}
-        ${modelBreakdown(edge.model_results, 'Edge')}
+        ${modelBreakdown(edge.model_results, 120)}
       </div>
 
       <!-- Routing -->
@@ -2059,15 +2010,16 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
           ${routed?'→ Routed to Cloud':'→ Edge result trusted'}
         </div>
         <div style="font-size:9px;color:var(--muted);margin-top:3px">${routing.reason??''}</div>
+        ${routing.avg_margin?`<div style="font-size:9px;color:var(--muted);margin-top:2px">avg margin: ${(routing.avg_margin*100).toFixed(1)}%</div>`:''}
       </div>
     </div>
 
-    <!-- Cloud AI -->
+    <!-- Cloud AI — full width with scrollable model list -->
     <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
-      <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud AI (${cloudN>1?cloudN+' BAT models':'BAT ensemble'})</div>
+      <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud (BAT)</div>
       <span class="pr-badge ${cloudIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${cloudIsAnom?'ANOMALY':'NORMAL'}</span>
       ${cloudN>1?voteBar(cloud.n_anomaly_votes??d.n_anomaly_votes, cloudN, cloudIsAnom?'var(--red)':'var(--green)'):''}
-      ${modelBreakdown(cloud.model_results, 'Cloud')}
+      ${modelBreakdown(cloud.model_results, 280)}
     </div>
   </div>`;
 }

@@ -259,23 +259,29 @@ def main() -> None:
         n_route = max(1, int(len(margin) * tolerance))
         routed_indices = sorted(np.argsort(margin)[-n_route:].tolist())
 
-    # energy_matrix has one row per window, so routed_indices are window indices directly.
     logging.info(
-        "Routing: %d / %d windows selected to cloud (tolerance=%.0f%%).",
+        "Routing: %d / %d lines selected to cloud (tolerance=%.0f%%).",
         len(routed_indices), len(predictions), tolerance * 100,
     )
-    np.save(
-        os.path.join(out_base, "routed_indices.npy"),
-        np.array(routed_indices, dtype=int),
-    )
+    routed_idx_arr = np.array(routed_indices, dtype=int)
+    np.save(os.path.join(out_base, "routed_indices.npy"), routed_idx_arr)
 
     if not routed_indices:
-        logging.info("No windows routed to cloud — edge results are final.")
+        logging.info("No lines routed to cloud — edge results are final.")
         logging.info("=== Inference complete. Outputs in '%s' ===", out_base)
         return
 
-    routed_windows = test_windows[np.array(routed_indices, dtype=int)]
-    np.save(os.path.join(out_base, "routed_windows.npy"), routed_windows)
+    # Build windows from routed lines for cloud inference.
+    test_lines   = test_windows.reshape(-1, input_c)
+    routed_lines = test_lines[routed_idx_arr]
+    n_full       = (len(routed_lines) // win_size) * win_size
+    if n_full == 0:
+        logging.info("Not enough routed lines to fill a window — edge results are final.")
+        logging.info("=== Inference complete. Outputs in '%s' ===", out_base)
+        return
+    routed_windows = routed_lines[:n_full].reshape(-1, win_size, input_c)
+    use_indices    = routed_idx_arr[:n_full]
+    np.save(os.path.join(out_base, "routed_lines.npy"), routed_lines)
 
     # ── Stage 3: Cloud BAT Ensemble ───────────────────────────────────────────
     logging.info("=== Stage 3: Cloud BAT Ensemble ===")
@@ -283,27 +289,20 @@ def main() -> None:
     cloud_cfg.setdefault("dataset", dataset)
     cloud_cfg.setdefault("win_size", win_size)
     cloud_cfg.setdefault("input_c", input_c)
-    # More parallel workers in demo mode: each model only has 1-2 batches of
-    # routed windows, so overhead per model is low and more threads help.
     cloud_cfg.setdefault("max_parallel_models", os.cpu_count() or 8)
 
-    # cloud_expert.run() logs in the exact format the frontend expects:
-    #   "Cloud expert: N windows, M BAT checkpoints, …"
-    #   "BAT model 'name' done."
-    #   "Cloud expert: all M/M BAT models complete."
     cloud_preds = cloud_run(routed_windows, cloud_cfg)
     np.save(os.path.join(out_base, "cloud_preds.npy"), cloud_preds)
 
     # ── Stage 4: Hybrid Evaluation ────────────────────────────────────────────
     logging.info("=== Stage 4: Hybrid Evaluation ===")
     logging.info(
-        "Cloud preds: %d / %d routed windows anomalous.",
+        "Cloud preds: %d / %d routed lines anomalous.",
         int(cloud_preds.sum()), len(cloud_preds),
     )
 
     hybrid_raw = predictions.copy()
-    for k, win_idx in enumerate(routed_indices):
-        hybrid_raw[win_idx] = int(cloud_preds[k])
+    hybrid_raw[use_indices] = cloud_preds
 
     hybrid_adj = _point_adjust(ground_truth, hybrid_raw)
     np.save(os.path.join(out_base, "hybrid_preds.npy"), hybrid_adj)

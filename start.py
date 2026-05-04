@@ -71,6 +71,10 @@ def _bat_ok(ds: str) -> bool:
     d = ROOT / "checkpoints" / "bat" / ds
     return d.exists() and len(list(d.glob("*.pth"))) >= MIN_BAT_CKPTS
 
+def _outputs_ok(ds: str) -> bool:
+    out = ROOT / "outputs" / ds
+    return (out / "edge_preds.npy").exists() and (out / "hybrid_preds.npy").exists()
+
 
 # ── Dependency helpers ────────────────────────────────────────────────────────
 
@@ -236,6 +240,30 @@ def setup_hdfs_logs() -> bool:
     return False
 
 
+def setup_outputs() -> bool:
+    all_ok = True
+    for ds in ("bgl", "hdfs", "os"):
+        if _outputs_ok(ds):
+            print(f"  {ds.upper()} inference outputs — already present, skipping.")
+            continue
+        print(f"  {ds.upper()} inference outputs — downloading from Hugging Face …")
+        _ensure_hf_hub()
+        out_dir  = ROOT / "outputs" / ds
+        zip_path = out_dir / f"{ds}_outputs.zip"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not _hf_download(f"outputs/{ds}.zip", zip_path):
+            print(f"  WARNING: {ds.upper()} outputs download failed — prediction lookup will use live inference.")
+            all_ok = False
+            continue
+        _extract(zip_path, out_dir)
+        if _outputs_ok(ds):
+            print(f"  {ds.upper()} inference outputs ready.")
+        else:
+            print(f"  WARNING: {ds.upper()} outputs incomplete after extraction.")
+            all_ok = False
+    return all_ok
+
+
 def setup_bat(datasets: list) -> bool:
     all_ok = True
     for i, ds in enumerate(datasets, 1):
@@ -270,6 +298,8 @@ def show_status() -> None:
     print(f"  HDFS raw logs                : {_ok(_hdfs_logs_ok())}")
     for ds in BAT_DATASETS:
         print(f"  BAT {ds.upper()} checkpoints          : {_ok(_bat_ok(ds))}")
+    for ds in ("bgl", "hdfs", "os"):
+        print(f"  {ds.upper()} inference outputs        : {_ok(_outputs_ok(ds))}")
     print()
 
 
@@ -301,6 +331,7 @@ def main() -> None:
     setup_qbat()
     setup_bgl_logs()
     setup_hdfs_logs()
+    setup_outputs()
     if not args.no_bat:
         setup_bat(BAT_DATASETS)
     else:

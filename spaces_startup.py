@@ -245,12 +245,50 @@ def _download_bgl_data() -> bool:
         return False
 
 
+# ── Pre-computed npy outputs ──────────────────────────────────────────────────
+
+OUTPUT_NP_FILES = [
+    "ground_truth.npy", "edge_preds.npy", "edge_preds_raw.npy",
+    "hybrid_preds.npy", "cloud_preds.npy",
+    "energy_matrix.npy", "routed_indices.npy",
+    "edge_preds_per_model.npy", "cloud_preds_per_model.npy",
+]
+
+
+def _outputs_present(ds: str) -> bool:
+    out_dir = ROOT / "outputs" / ds
+    required = ["edge_preds.npy", "hybrid_preds.npy"]
+    return all((out_dir / f).exists() for f in required)
+
+
+def _download_outputs(ds: str) -> bool:
+    print(f"[startup] {ds.upper()} inference outputs not found. Downloading from HF…",
+          flush=True)
+    out_dir  = ROOT / "outputs" / ds
+    zip_path = out_dir / f"{ds}_outputs.zip"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not _hf_download(f"outputs/{ds}.zip", zip_path):
+        print(f"[startup] {ds.upper()} outputs download failed — prediction lookup unavailable.",
+              flush=True)
+        return False
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(str(out_dir))
+        zip_path.unlink(missing_ok=True)
+        if _outputs_present(ds):
+            present = [f for f in OUTPUT_NP_FILES if (out_dir / f).exists()]
+            print(f"[startup] {ds.upper()} outputs ready ({len(present)} npy files).", flush=True)
+            return True
+        print(f"[startup] {ds.upper()} outputs extraction incomplete.", flush=True)
+        return False
+    except Exception as exc:
+        print(f"[startup] {ds.upper()} outputs extraction error: {exc}", flush=True)
+        return False
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 def _clear_precomputed_results() -> None:
-    # Keep pre-computed .npy results — they are the intended initial state for the
-    # demo (Results tab populated on first load, single-log prediction lookup works
-    # immediately). Users can run Start Analysis to regenerate them.
     pass
 
 
@@ -263,6 +301,13 @@ def _launch_app() -> None:
 
 if __name__ == "__main__":
     _clear_precomputed_results()
+
+    for _ds in ("bgl", "hdfs", "os"):
+        if _outputs_present(_ds):
+            print(f"[startup] {_ds.upper()} inference outputs present — skipping download.",
+                  flush=True)
+        else:
+            _download_outputs(_ds)
 
     if _os_logs_present():
         print("[startup] OpenStack raw logs present — skipping download.", flush=True)

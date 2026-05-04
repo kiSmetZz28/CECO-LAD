@@ -346,21 +346,9 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
                                         N_ANOM_EVENTS - 1)
         end = min(start + 1, len(hybrid))
     elif dataset == "os":
-        # OS: session_idx = processed session index (0..N_NORMAL+N_ABNORMAL-1).
-        # Each session maps to its proportional range of npy events.
-        N_NORM_SESS   = _db.OS_N_NORMAL_SESSIONS    # 1248
-        N_NORM_EVENTS = _db.OS_N_NORMAL_EVENTS      # 136913
-        N_ANOM_EVENTS = _db.OS_N_ABNORMAL_EVENTS    # 18387
-        N_ANOM_SESS   = _db.OS_N_ABNORMAL_SESSIONS  # 138
-        if session_idx < N_NORM_SESS:
-            start = min(int(session_idx * N_NORM_EVENTS / N_NORM_SESS),
-                        N_NORM_EVENTS - 1)
-            end   = min(start + _db.OS_AVG_NORMAL_EVENTS, len(hybrid))
-        else:
-            k     = session_idx - N_NORM_SESS
-            start = N_NORM_EVENTS + min(int(k * N_ANOM_EVENTS / N_ANOM_SESS),
-                                        N_ANOM_EVENTS - 1)
-            end   = min(start + _db.OS_AVG_ABNORMAL_EVENTS, len(hybrid))
+        # OS npy is per-line; session_idx is the direct npy position.
+        start = min(session_idx, len(hybrid) - 1)
+        end   = start + 1
     elif dataset == "hdfs":
         # HDFS: session_idx = local test line index (direct npy position).
         # Guard: if npy arrays are from an old short demo run, refuse to clamp
@@ -382,20 +370,74 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
     hybrid_pred = 1 if hybrid[start:end].sum()   > 0 else 0
 
     # Check if the anchor event at `start` was routed to cloud.
-    # Using a single point avoids false-positives for OS where proportional
-    # session ranges span ~109 events and would almost always contain a routed index.
     routed = bool(np.searchsorted(_routed_indices, start) < len(_routed_indices)
                   and _routed_indices[np.searchsorted(_routed_indices, start)] == start)
 
-    def _stage(pred, n_models):
-        return {
-            "prediction":      pred,
-            "label":           "ANOMALY" if pred else "NORMAL",
-            "n_models":        n_models,
-            "n_anomaly_votes": pred,
-            "n_normal_votes":  1 - pred,
-            "model_results":   [],
-        }
+    def _load_thresholds_yaml(path):
+        if not path.exists():
+            return []
+        with open(path) as _f:
+            return yaml.safe_load(_f).get("models", [])
+
+    # Edge: per-model point-adjusted votes from edge_preds_per_model.npy
+    edge_model_results = []
+    pm_path = out_base / "edge_preds_per_model.npy"
+    if pm_path.exists():
+        try:
+            pm = np.load(pm_path)
+            for col, t in enumerate(_load_thresholds_yaml(out_base / "thresholds_edge.yaml")):
+                if col >= pm.shape[1]:
+                    break
+                vote = int(pm[start, col]) if start < len(pm) else edge_pred
+                edge_model_results.append({
+                    "model":     t["name"],
+                    "energy":    None,
+                    "threshold": round(float(t["threshold"]), 6),
+                    "vote":      vote,
+                })
+        except Exception:
+            pass
+
+    n_edge      = len(edge_model_results) or 1
+    n_anom_edge = sum(r["vote"] for r in edge_model_results) if edge_model_results else edge_pred
+    edge_result = {
+        "prediction": edge_pred, "label": "ANOMALY" if edge_pred else "NORMAL",
+        "n_models": n_edge, "n_anomaly_votes": n_anom_edge,
+        "n_normal_votes": n_edge - n_anom_edge, "model_results": edge_model_results,
+    }
+
+    # Cloud: per-model point-adjusted votes from cloud_preds_per_model.npy
+    cloud_thresh_list   = _load_thresholds_yaml(out_base / "thresholds_cloud.yaml")
+    cloud_model_results = []
+    cp_path = out_base / "cloud_preds_per_model.npy"
+    if cp_path.exists():
+        try:
+            cp = np.load(cp_path)
+            for col, t in enumerate(cloud_thresh_list):
+                if col >= cp.shape[1]:
+                    break
+                vote = int(cp[start, col]) if start < len(cp) else hybrid_pred
+                cloud_model_results.append({
+                    "model":     t["name"],
+                    "energy":    None,
+                    "threshold": round(float(t["threshold"]), 6),
+                    "vote":      vote,
+                })
+        except Exception:
+            pass
+    if not cloud_model_results:
+        cloud_model_results = [
+            {"model": t["name"], "energy": None,
+             "threshold": round(float(t["threshold"]), 6), "vote": hybrid_pred}
+            for t in cloud_thresh_list
+        ]
+    n_cloud      = len(cloud_model_results) or 1
+    n_anom_cloud = sum(r["vote"] for r in cloud_model_results) if cloud_model_results else hybrid_pred
+    cloud_result = {
+        "prediction": hybrid_pred, "label": "ANOMALY" if hybrid_pred else "NORMAL",
+        "n_models": n_cloud, "n_anomaly_votes": n_anom_cloud,
+        "n_normal_votes": n_cloud - n_anom_cloud, "model_results": cloud_model_results,
+    }
 
     routing = {
         "routed":     routed,
@@ -403,20 +445,15 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
         "reason":     "edge uncertain — routed to cloud" if routed
                       else "edge result confirmed by hybrid",
     }
-    edge_result  = _stage(edge_pred,   1)
-    cloud_result = _stage(hybrid_pred, 1)
 
     return {
         **cloud_result,
-        "n_events":     n_lines,
-        "win_size":     win_size,
-        "padded":       False,
-        "elapsed_s":    0.0,
-        "edge":         edge_result,
-        "routing":      routing,
-        "cloud":        cloud_result,
-        "source":       "pipeline",
-        "window_index": session_idx,
+        "n_events":  n_lines,
+        "elapsed_s": 0.0,
+        "edge":      edge_result,
+        "routing":   routing,
+        "cloud":     cloud_result,
+        "source":    "pipeline",
     }
 
 
@@ -530,8 +567,8 @@ def _find_window_for_raw(dataset: str, split: str, line_number: int, block_id: s
     db_path = str(Path(__file__).parent / "ceco_lad.db")
 
     if dataset == "os":
-        lines_per = {"train_normal": 136, "test_normal": 110,
-                     "test_abnormal": 134}.get(block_id, 110)
+        if split == "train" or block_id == "train_normal":
+            return None
         with sqlite3.connect(db_path, timeout=30) as c:
             row = c.execute(
                 "SELECT MIN(line_number) FROM raw_logs WHERE dataset='os' AND block_id=?",
@@ -539,15 +576,13 @@ def _find_window_for_raw(dataset: str, split: str, line_number: int, block_id: s
             ).fetchone()
         first = row[0] if (row and row[0] is not None) else 0
         local = max(0, line_number - first)
-        idx   = local // lines_per
-        if block_id == "test_abnormal":
-            with sqlite3.connect(db_path, timeout=30) as c:
-                n_normal = c.execute(
-                    "SELECT COUNT(*) FROM windows "
-                    "WHERE dataset='os' AND split='test' AND block_id='test_normal'"
-                ).fetchone()[0]
-            idx += n_normal
-        return int(idx)
+        if block_id == "test_normal":
+            return min(int(local * _db.OS_N_NORMAL_EVENTS / _db.OS_N_TEST_NORMAL_LINES),
+                       _db.OS_N_NORMAL_EVENTS - 1)
+        else:  # test_abnormal
+            k = min(int(local * _db.OS_N_ABNORMAL_EVENTS / _db.OS_N_TEST_ABNORMAL_LINES),
+                    _db.OS_N_ABNORMAL_EVENTS - 1)
+            return _db.OS_N_NORMAL_EVENTS + k
 
     elif dataset == "bgl":
         # Each raw BGL log line maps directly to one npy result — no session
@@ -568,6 +603,11 @@ def _find_window_for_raw(dataset: str, split: str, line_number: int, block_id: s
         if split == "train":
             return None   # no pipeline results for train
         local = max(0, line_number - _db.HDFS_N_TRAIN_LINES)
+        # The npy has one extra normal entry vs the DB (a blank line in
+        # test_normal.log was skipped during ingest). Shift anomaly indices
+        # by +1 so they align with the npy's anomaly region.
+        if local >= _db.HDFS_N_TEST_NORMAL_LINES:
+            local += 1
         return local
 
     return None
@@ -601,9 +641,9 @@ async def predict_from_raw(
     if not all_lines:
         return {"error": "No session data found. Check that the dataset is fully ingested."}
 
-    # For BGL and HDFS the window_idx is a raw local line index (up to ~11M for
-    # HDFS, ~1.27M for BGL) — don't clamp against the txt-file session count.
-    if dataset not in ("bgl", "hdfs") and window_idx >= len(all_lines):
+    # For BGL, HDFS, and OS the window_idx is a raw per-line npy index —
+    # don't clamp against the txt-file session count.
+    if dataset not in ("bgl", "hdfs", "os") and window_idx >= len(all_lines):
         window_idx = len(all_lines) - 1
 
     if split == "test":
@@ -630,7 +670,7 @@ async def predict_from_raw(
             return result
         result["source"] = "live"
 
-    result["window_index"] = window_idx
+    result["line_index"] = window_idx
 
     # Derive ground truth from pipeline npy gt array when available (HDFS, BGL),
     # or from block_id / windows table for other datasets.
@@ -646,6 +686,12 @@ async def predict_from_raw(
         if split == "test" and line_number is not None:
             abnormal_start = _db.HDFS_N_TRAIN_LINES + _db.HDFS_N_TEST_NORMAL_LINES
             result["ground_truth"] = 1 if line_number >= abnormal_start else 0
+        else:
+            result["ground_truth"] = None
+    elif dataset == "os":
+        # OS npy position: normal region [0, OS_N_NORMAL_EVENTS), abnormal region after.
+        if split == "test":
+            result["ground_truth"] = 1 if window_idx >= _db.OS_N_NORMAL_EVENTS else 0
         else:
             result["ground_truth"] = None
     else:

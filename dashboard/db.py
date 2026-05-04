@@ -36,19 +36,20 @@ BGL_N_ABNORMAL_EVENTS     = 419_143   # events from bgl_test_abnormal (= last  n
 # HDFS raw-log line counts from the pre-split files at LOG_ROOT.
 # Line numbers are continuous across all three files (train first, then test).
 HDFS_N_TRAIN_LINES         = 95_125        # lines in train.log
-HDFS_N_TEST_NORMAL_LINES   = 10_792_214    # lines in test_normal.log (actual stored count)
+HDFS_N_TEST_NORMAL_LINES   = 10_792_213    # lines in test_normal.log (actual stored count; one blank line skipped during ingest)
 HDFS_N_TEST_ABNORMAL_LINES = 284_786       # lines in test_abnormal.log
 
 # Pipeline event-space boundaries for OpenStack (from outputs/os/ground_truth.npy).
-# Each PROCESSED SESSION (txt-file line) maps proportionally to its npy range.
-#   test_normal  session k → npy[ k * N_NORMAL_EVENTS  / N_NORMAL_SESSIONS  : + avg_norm ]
-#   test_abnormal session k → npy[ N_NORMAL_EVENTS + k * N_ABNORMAL_EVENTS / N_ABNORMAL_SESSIONS : + avg_anom ]
-OS_N_NORMAL_SESSIONS   = 1_248    # test_normal sessions (lines in test_normal.txt)
-OS_N_ABNORMAL_SESSIONS = 138      # test_abnormal sessions
-OS_N_NORMAL_EVENTS     = 136_913  # events from test_normal  (first npy entries)
-OS_N_ABNORMAL_EVENTS   = 18_387   # events from test_abnormal (last  npy entries)
-OS_AVG_NORMAL_EVENTS   = OS_N_NORMAL_EVENTS   // OS_N_NORMAL_SESSIONS    # 109
-OS_AVG_ABNORMAL_EVENTS = OS_N_ABNORMAL_EVENTS // OS_N_ABNORMAL_SESSIONS   # 133
+# npy is per-line: test_normal lines first, then test_abnormal.
+OS_N_NORMAL_EVENTS       = 136_913  # npy entries from test_normal
+OS_N_ABNORMAL_EVENTS     = 18_387   # npy entries from test_abnormal
+OS_N_TEST_NORMAL_LINES   = 137_074  # raw log lines in test_normal block (DB count)
+OS_N_TEST_ABNORMAL_LINES = 18_434   # raw log lines in test_abnormal block (DB count)
+# Legacy session-level constants kept for reference
+OS_N_NORMAL_SESSIONS   = 1_248
+OS_N_ABNORMAL_SESSIONS = 138
+OS_AVG_NORMAL_EVENTS   = OS_N_NORMAL_EVENTS   // OS_N_NORMAL_SESSIONS
+OS_AVG_ABNORMAL_EVENTS = OS_N_ABNORMAL_EVENTS // OS_N_ABNORMAL_SESSIONS
 
 
 # ── Connection factory ────────────────────────────────────────────────────────
