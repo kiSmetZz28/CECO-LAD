@@ -97,21 +97,25 @@ Open **http://localhost:8765**. A built-in **? Help** button guides you through 
 
 All commands run from the project root. Two Conda environments are needed:
 
-| Environment | Purpose                                                      |
-| ----------- | ------------------------------------------------------------ |
-| `ceco-lad`  | Dashboard, evaluation, edge inference (CPU)                  |
-| `hybrid`    | Training (GPU recommended) and cloud BAT inference           |
+| Environment | Purpose                                            |
+| ----------- | -------------------------------------------------- |
+| `ceco-lad`  | Dashboard, evaluation, edge inference (CPU)        |
+| `hybrid`    | Training (GPU recommended) and cloud BAT inference |
 
 ### Step 1 — Set up environments
 
 ```bash
 # ceco-lad (CPU — for dashboard and edge inference)
-conda create -yn ceco-lad python=3.10.0 && conda activate ceco-lad
+conda create -yn ceco-lad python=3.10.0
+conda activate ceco-lad
 pip install torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cpu
-pip install -r environment/cloud/requirements.txt && pip install -e . && pip install gdown huggingface_hub
+pip install -r environment/cloud/requirements.txt
+pip install -e .
+pip install gdown huggingface_hub
 
 # hybrid (GPU — for training and cloud inference)
-conda create -yn hybrid python=3.10.0 && conda activate hybrid
+conda create -yn hybrid python=3.10.0
+conda activate hybrid
 pip install -r environment/cloud/requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
 pip install -e .
 ```
@@ -163,22 +167,28 @@ python dashboard/cloud_runner.py --config configs/inference/os.yaml
 ### Train from scratch
 
 ```bash
-conda activate hybrid   # GPU recommended — 2–8 hours per dataset
-python run.py train os && python run.py train bgl && python run.py train hdfs
+conda activate hybrid
+python run.py train os
+python run.py train bgl
+python run.py train hdfs
 ```
 
 Runs a hyperparameter sweep — 81 models per dataset. Then regenerate thresholds:
 
 ```bash
 conda activate ceco-lad
-python run.py eval os && python run.py eval bgl && python run.py eval hdfs
+python run.py eval os
+python run.py eval bgl
+python run.py eval hdfs
 ```
 
 ### Convert to edge models
 
 ```bash
 conda activate ceco-lad
-python run.py convert os && python run.py convert bgl && python run.py convert hdfs
+python run.py convert os
+python run.py convert bgl
+python run.py convert hdfs
 ```
 
 Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset}/`. Skip if you downloaded Q-BAT checkpoints in Step 2.
