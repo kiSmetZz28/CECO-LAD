@@ -89,23 +89,7 @@ python start.py
 
 Open **http://localhost:8765** in your browser.
 
-`start.py` automatically downloads all required assets on first run and skips anything already present:
-
-| Asset | Size | Source |
-|-------|------|--------|
-| ExecuTorch build | ~1.4 GB | Google Drive |
-| Q-BAT checkpoints | ~220 MB | Google Drive |
-| BGL raw logs | ~700 MB | Hugging Face |
-| HDFS raw logs | ~1.6 GB | Hugging Face |
-| BAT checkpoints | ~3.5 GB × dataset | Google Drive |
-
-```bash
-python start.py --no-bat      # skip BAT checkpoints, dashboard still works
-python start.py --setup-only  # download only, no launch
-python start.py --status      # show what is present / missing
-```
-
-> On first launch the **Database** indicator shows **Loading** while log data is imported (~1–2 min). Pre-computed OpenStack results are included so the Results tab is populated immediately.
+> `start.py` automatically downloads all required assets (~4 GB) on first run. On first launch the **Database** indicator shows **Loading** while log data is imported (~1–2 min).
 
 ---
 
@@ -185,6 +169,9 @@ Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset
 
 ## Using the Dashboard
 
+Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
+
+For local use:
 ```bash
 conda activate ceco-lad
 python start.py   # or python dashboard/app.py if assets are already present
