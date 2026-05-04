@@ -452,7 +452,6 @@ CECO-LAD/
 │
 ├── start.py                        # Local setup + launch: downloads assets then starts dashboard
 ├── run.py                          # Main entry point: train / eval / convert / download / infer
-├── run.sh                          # Bash shortcut (Linux/macOS)
 │
 ├── ceco_core/                      # Shared library used by all pipelines
 │   ├── models/
