@@ -5,11 +5,11 @@ ExecuTorch CPU backend. The exported model takes a single window tensor of
 shape [1, win_size, input_c] and returns a 1-D energy tensor of length win_size.
 
 Usage — convert one specific model:
-    python edge_pipeline/convert.py --config configs/training/bgl.yaml \\
+    python quantization/convert.py --config configs/training/bgl.yaml \\
         --num_epochs 3 --k 3 --e_layer_num 3 --batch_size 32
 
 Usage — convert every combination in the sweep (all Q-BAT models):
-    python edge_pipeline/convert.py --config configs/training/bgl.yaml --all
+    python quantization/convert.py --config configs/training/bgl.yaml --all
 """
 import argparse
 import os

@@ -47,7 +47,7 @@ CECO-LAD/
 │
 ├── ceco_core/                 # Shared model library (EM-AT, energy scoring, voting)
 ├── training_pipeline/         # BAT ensemble training and threshold evaluation
-├── edge_pipeline/             # Q-BAT quantization (BAT → ExecuTorch .pte)
+├── quantization/              # Q-BAT quantization (BAT → ExecuTorch .pte)
 ├── inference_pipeline/        # Full edge → routing → cloud pipeline
 │   └── executorch/            # Pre-built ExecuTorch 0.5.0 runtime (downloaded by start.py)
 ├── dashboard/                 # FastAPI + single-page web dashboard

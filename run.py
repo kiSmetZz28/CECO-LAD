@@ -70,7 +70,7 @@ def main() -> None:
     elif command == "convert":
         dataset = argv[1] if len(argv) > 1 else "bgl"
         print(f"[run] Converting BAT → Q-BAT — dataset: {dataset}")
-        _run(str(_ROOT / "edge_pipeline" / "convert.py"),
+        _run(str(_ROOT / "quantization" / "convert.py"),
              "--config", f"configs/training/{dataset}.yaml", "--all")
 
     elif command == "infer":
