@@ -63,11 +63,32 @@ print("  No git-lfs needed — large files are chunked automatically.\n")
 # by spaces_startup.py using gdown (same mechanism as BAT checkpoints).
 # This avoids the timing issue where upload_folder triggers HF's auto-build
 # before a separately uploaded binary can arrive.
+HF_README = f"""\
+---
+title: CECO-LAD
+emoji: 🔍
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
+{(root / 'README.md').read_text()}"""
+
+api.upload_file(
+    path_or_fileobj=HF_README.encode(),
+    path_in_repo="README.md",
+    repo_id=repo_id,
+    repo_type="space",
+    commit_message="update README with HF Space config",
+)
+
 api.upload_folder(
     repo_id=repo_id,
     repo_type="space",
     folder_path=str(root),
     ignore_patterns=[
+        "README.md",             # already uploaded above with HF front matter
         # BAT checkpoints (3.5 GB) — downloaded at runtime from HF dataset repo
         "checkpoints/bat/**",
         # Entire executorch directory — compiled libs not needed in Space repo
