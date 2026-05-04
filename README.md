@@ -66,7 +66,7 @@ CECO-LAD/
 
 ## Quick Start — Dashboard
 
-Try the **[live demo on Hugging Face Spaces]([anonymous])** — no setup needed.
+Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
 
 For local use:
 
