@@ -37,6 +37,11 @@ logs/
 # Runtime outputs (checkpoints and outputs are deployment artifacts)
 checkpoints/
 outputs/
+# Exception: pre-computed thresholds are small and allow users to skip eval
+!outputs/
+!outputs/*/
+!outputs/*/thresholds_cloud.yaml
+!outputs/*/thresholds_edge.yaml
 
 # SQLite database (rebuilt at runtime, too large for GitHub)
 *.db
