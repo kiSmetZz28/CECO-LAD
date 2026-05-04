@@ -40,3 +40,7 @@ outputs/
 
 # SQLite database (rebuilt at runtime, too large for GitHub)
 *.db
+
+# ExecuTorch source + build tree (~1.4 GB, downloaded via tools/download_data.py)
+inference_pipeline/executorch/
+inference_pipeline/executorch.zip

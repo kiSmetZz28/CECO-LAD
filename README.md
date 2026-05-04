@@ -1,14 +1,3 @@
----
-title: CECO-LAD
-emoji: 🔍
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
-license: mit
-short_description: Cloud-Edge Collaborative Log Anomaly Detection demo
----
-
 # CECO-LAD
 
 **Cloud-Edge Collaborative Log Anomaly Detection**
