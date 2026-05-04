@@ -89,7 +89,7 @@ python start.py
 
 Open **http://localhost:8765**. A built-in **? Help** button guides you through all features.
 
-> `start.py` automatically downloads all required assets (~4 GB) on first run. On first launch the **Database** indicator shows **Loading** while log data is imported (~1–2 min).
+> `start.py` automatically downloads all required assets on first run. On first launch the **Database** indicator shows **Loading** while log data is imported.
 
 ---
 
@@ -139,7 +139,7 @@ python tools/download_checkpoints.py --type qbat
 
 ### Step 3 — Run inference
 
-Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction (~5–15 min per dataset on CPU).
+Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction.
 
 ```bash
 conda activate ceco-lad
