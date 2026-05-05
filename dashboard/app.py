@@ -919,6 +919,9 @@ async def outputs(dataset: str):
             result[key] = arr.tolist()
             result[f"{key}_step"] = 1
 
+    ri_full = loaded.get("routed_indices")
+    gt_full = loaded.get("ground_truth")
+
     # YAML thresholds
     for fname in ("thresholds_cloud.yaml", "thresholds_edge.yaml"):
         fpath = out_dir / fname
@@ -938,13 +941,12 @@ async def outputs(dataset: str):
         result["stats"] = stats
 
     # Routing stats
-    ri = loaded.get("routed_indices")
-    gt = loaded.get("ground_truth")
-    if ri is not None and gt is not None:
+    ri = ri_full
+    if ri is not None and gt_full is not None:
         result["routing_stats"] = {
-            "total_windows": int(gt.shape[0]),
+            "total_windows": int(gt_full.shape[0]),
             "routed_windows": int(ri.shape[0]),
-            "routing_pct": round(100.0 * ri.shape[0] / gt.shape[0], 2),
+            "routing_pct": round(100.0 * ri.shape[0] / gt_full.shape[0], 2),
         }
 
     return result

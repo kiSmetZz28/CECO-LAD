@@ -649,13 +649,13 @@ select:focus{outline:none;border-color:var(--blue);}
         <span class="pb-sub">fast local scan (Q-BAT, 3 models)</span>
       </div>
       <div class="pb-arrow">›</div>
-      <div class="pb-stage" id="pb-routing" onclick="showTab('analysis',document.querySelector('.tab[data-tab=analysis]'))">
+      <div class="pb-stage" id="pb-routing" onclick="showTab('results',document.querySelector('.tab[data-tab=results]'))">
         <span class="pb-ico">🔀</span>
         <span class="pb-title">Routing</span>
         <span class="pb-sub">uncertain sessions → cloud</span>
       </div>
       <div class="pb-arrow">›</div>
-      <div class="pb-stage" id="pb-cloud" onclick="showTab('analysis',document.querySelector('.tab[data-tab=analysis]'))">
+      <div class="pb-stage" id="pb-cloud" onclick="showTab('results',document.querySelector('.tab[data-tab=results]'))">
         <span class="pb-ico">☁️</span>
         <span class="pb-title">Cloud AI</span>
         <span class="pb-sub">deep re-analysis (BAT, 81 models)</span>
@@ -719,7 +719,6 @@ select:focus{outline:none;border-color:var(--blue);}
       <div class="tabs-bar">
         <div class="tab active" data-tab="pipeline"  onclick="showTab('pipeline',this)">🔗 Pipeline</div>
         <div class="tab"        data-tab="results"   onclick="showTab('results',this)">📊 Results</div>
-        <div class="tab"        data-tab="analysis"  onclick="showTab('analysis',this)">🔬 Analysis</div>
         <div class="tab"        data-tab="system"    onclick="showTab('system',this)">⚙️ System</div>
       </div>
 
@@ -832,13 +831,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <!-- ── TAB: Results ──────────────────────────── -->
       <div class="tab-pane" id="pane-results">
 
-        <div id="metricsInner">
-          <div class="empty">
-            <div class="ico">📊</div>
-            <p>Click <strong>Start Analysis</strong> in the sidebar to run the pipeline.<br>
-            <span style="font-size:11px">Detection scores will appear here automatically when it finishes.</span></p>
-          </div>
-        </div>
+        <div id="metricsInner"></div>
 
         <!-- Anomaly timeline (populated by renderSequences) -->
         <div id="seqInner" style="margin-top:18px">
@@ -846,34 +839,6 @@ select:focus{outline:none;border-color:var(--blue);}
         </div>
 
       </div><!-- /pane-results -->
-
-      <!-- ── TAB: Analysis ─────────────────────────── -->
-      <div class="tab-pane" id="pane-analysis">
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
-          <div>
-            <div class="card-title">Anomaly Energy Scores</div>
-            <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.65">
-              Each line shows the "anomaly energy" score the Edge AI assigned to each log window over time.
-              Higher peaks mean the AI detected something unusual.
-            </p>
-            <div id="energyInner">
-              <div class="empty"><div class="ico">⚡</div><p>Run inference to see energy scores.</p></div>
-            </div>
-          </div>
-          <div>
-            <div class="card-title">Cloud Routing</div>
-            <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.65">
-              The Edge AI handles most windows locally. Only the uncertain ones are sent to the cloud.
-              This chart shows the split.
-            </p>
-            <div id="routingInner">
-              <div class="empty"><div class="ico">🔀</div><p>Run inference to see routing stats.</p></div>
-            </div>
-          </div>
-        </div>
-
-      </div><!-- /pane-analysis -->
 
       <!-- ── TAB: System ───────────────────────────── -->
       <div class="tab-pane" id="pane-system">
@@ -1065,8 +1030,7 @@ function connectStream() {
       log('[Dashboard] Run was stopped — results not loaded.', 'lw');
       // Clear stale results from display
       S.results = null;
-      document.getElementById('metricsInner').innerHTML =
-        '<div class="empty"><div class="ico">⏹</div><p>Run was stopped. Start a new analysis to see results.</p></div>';
+      document.getElementById('metricsInner').innerHTML = '';
       document.getElementById('seqInner').innerHTML =
         '<div class="empty"><div class="ico">🔍</div><p>Run inference to see the anomaly timeline.</p></div>';
       PL.results = [];
@@ -1125,8 +1089,6 @@ async function loadResults(ds) {
     S.results = data;
     renderMetrics(data);
     renderSequences(data);
-    renderEnergy(data);
-    renderRouting(data);
     renderThresholds(data);
     renderQuickStats(data);
     updatePipelineBanner();
@@ -1165,23 +1127,20 @@ function setStageState(id, state) {
   if (state) el.classList.add('pb-' + state);
 }
 
-/* ── Metrics tab ────────────────────────────────────── */
+/* ── Metrics ────────────────────────────────────────── */
 function renderMetrics(data) {
   const el = document.getElementById('metricsInner');
+  if (!el) return;
   const s = data?.stats;
   const hasEdge   = s?.edge_fscore   !== undefined;
   const hasHybrid = s?.hybrid_fscore !== undefined;
-  if (!hasEdge && !hasHybrid) {
-    el.innerHTML = '<div class="empty"><div class="ico">📊</div><p>No results found. Run inference first.</p></div>';
-    return;
-  }
+  if (!hasEdge && !hasHybrid) { el.innerHTML = ''; return; }
   const best = hasHybrid
     ? {label:'Hybrid (Edge+Cloud)', acc:s.hybrid_accuracy, prec:s.hybrid_precision, rec:s.hybrid_recall, f1:s.hybrid_fscore}
     : {label:'Edge only',           acc:s.edge_accuracy,   prec:s.edge_precision,   rec:s.edge_recall,   f1:s.edge_fscore};
   const rows = [];
   if (hasEdge)   rows.push(['Edge AI (Q-BAT)',    'tag-edge',   s.edge_accuracy,   s.edge_precision,   s.edge_recall,   s.edge_fscore]);
   if (hasHybrid) rows.push(['Hybrid (Edge+Cloud)','tag-hybrid', s.hybrid_accuracy, s.hybrid_precision, s.hybrid_recall, s.hybrid_fscore]);
-
   el.innerHTML = `
     <div class="kpi-row">
       <div class="kpi c-blue">  <div class="kl">Accuracy</div>  <div class="kv">${pct(best.acc)}</div>  <div class="ks">${best.label}</div></div>
@@ -1196,35 +1155,12 @@ function renderMetrics(data) {
         <td>${f4(r[2])}</td><td>${f4(r[3])}</td><td>${f4(r[4])}</td><td><strong>${f4(r[5])}</strong></td>
       </tr>`).join('')}</tbody>
     </table>
-    <div class="card-title">Incremental Ensemble F-score</div>
-    <div class="chart-box"><canvas id="ensChart"></canvas></div>
     <div class="metric-guide">
       <div class="mg-item"><div class="mg-label">🎯 Precision — "Is the alarm real?"</div><div class="mg-desc">When the system flags an anomaly, how often is it actually one? High precision = fewer false alarms.</div></div>
       <div class="mg-item"><div class="mg-label">🔍 Recall — "Did it catch everything?"</div><div class="mg-desc">Of all real anomalies, how many did it find? High recall = fewer missed problems.</div></div>
       <div class="mg-item"><div class="mg-label">⚖️ F-score — "Overall quality"</div><div class="mg-desc">Balances precision and recall. <strong>This is the most important number.</strong> Closer to 1.0 (100%) is better.</div></div>
       <div class="mg-item"><div class="mg-label">✓ Accuracy — "How often is it right?"</div><div class="mg-desc">Percentage of all windows correctly classified. Can be misleading when anomalies are rare — F-score is more reliable.</div></div>
     </div>`;
-  buildEnsembleChart();
-}
-
-async function buildEnsembleChart() {
-  try {
-    const {logs} = await fetch('/api/logs').then(r => r.json());
-    const evalLog = logs.find(l => l.name.startsWith('evaluate_bat'));
-    if (!evalLog) return;
-    const {metrics} = await fetch(`/api/logs/${evalLog.name}`).then(r => r.json());
-    const maj = metrics.majority || [], con = metrics.consensus || [], alo = metrics.at_least_one || [];
-    if (!maj.length && !con.length) return;
-    const canvas = document.getElementById('ensChart');
-    if (!canvas) return;
-    if (S.charts.ens) S.charts.ens.destroy();
-    const mk = (arr, label, color) => arr.length ? [{label, data: arr.map(m=>m.f1), borderColor: color, backgroundColor: color+'18', borderWidth:1.5, pointRadius:0, tension:0}] : [];
-    S.charts.ens = new Chart(canvas, {
-      type:'line',
-      data:{labels: maj.length ? maj.map((_,i)=>i+1) : con.map((_,i)=>i+1), datasets:[...mk(maj,'Majority','#3b82f6'),...mk(con,'Consensus','#22c55e'),...mk(alo,'At Least One','#f59e0b')]},
-      options: chartOpts('Models Added','F-score',0,1),
-    });
-  } catch {}
 }
 
 /* ── Sequences tab ──────────────────────────────────── */
@@ -1237,31 +1173,29 @@ function renderSequences(data) {
   const N = data.ground_truth_full_len || data.ground_truth.length;
   const step = data.ground_truth_step || 1;
   el.innerHTML = `
-    <div class="card-title">Anomaly Timeline — ${N.toLocaleString()} windows${step>1?` (1 pixel = ${step} windows)`:''}</div>
+    <div class="card-title">Anomaly Timeline</div>
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:var(--muted)">
       <div class="legend">
         <span><span class="ldot" style="background:#22c55e"></span>Normal</span>
         <span><span class="ldot" style="background:#ef4444"></span>Anomaly</span>
-        ${data.routed_indices?.length?'<span><span class="ldot" style="background:#f59e0b"></span>Sent to cloud</span>':''}
       </div>
     </div>
     <div class="tl-row"><div class="tl-label">GROUND TRUTH</div><canvas class="tl-canvas" id="cvGT" height="36"></canvas></div>
     ${data.edge_preds?.length?`<div class="tl-row"><div class="tl-label">EDGE AI PREDICTIONS</div><canvas class="tl-canvas" id="cvEdge" height="36"></canvas></div>`:''}
     ${data.hybrid_preds?.length?`<div class="tl-row"><div class="tl-label">FINAL PREDICTIONS (Edge + Cloud)</div><canvas class="tl-canvas" id="cvHybrid" height="36"></canvas></div>`:''}
-    <p style="font-size:11px;color:var(--muted);margin-top:8px">Green = normal, red = anomaly${data.routed_indices?.length?', orange ticks = windows the Edge AI was uncertain about and sent to the cloud':''}</p>`;
+    <p style="font-size:11px;color:var(--muted);margin-top:8px">Green = normal, red = anomaly</p>`;
   setTimeout(redrawTimelines, 60);
 }
 
 function redrawTimelines() {
   const data = S.results;
   if (!data?.ground_truth) return;
-  const ri = data.routed_indices?.length ? data.routed_indices.map(i => Math.floor(i / (data.routed_indices_step || 1))) : null;
-  drawTimeline('cvGT',     data.ground_truth,  null);
-  if (data.edge_preds)   drawTimeline('cvEdge',   data.edge_preds,   null);
-  if (data.hybrid_preds) drawTimeline('cvHybrid', data.hybrid_preds, ri);
+  drawTimeline('cvGT',     data.ground_truth);
+  if (data.edge_preds)   drawTimeline('cvEdge',   data.edge_preds);
+  if (data.hybrid_preds) drawTimeline('cvHybrid', data.hybrid_preds);
 }
 
-function drawTimeline(id, preds, routedIdxs) {
+function drawTimeline(id, preds) {
   const cv = document.getElementById(id);
   if (!cv) return;
   const w = cv.clientWidth || 800;
@@ -1276,56 +1210,9 @@ function drawTimeline(id, preds, routedIdxs) {
     ctx.fillStyle = `rgb(${Math.round(34+f*205)},${Math.round(197+f*-129)},${Math.round(94+f*-26)})`;
     ctx.fillRect(x, 0, 1, 36);
   }
-  if (routedIdxs?.length) {
-    ctx.fillStyle = 'rgba(245,158,11,.85)';
-    for (const idx of routedIdxs) { const x = Math.floor(idx * w / n); if (x>=0&&x<w) ctx.fillRect(x,0,1,8); }
-  }
 }
 
 /* ── Energy tab ─────────────────────────────────────── */
-function renderEnergy(data) {
-  const el = document.getElementById('energyInner');
-  if (!data?.energy_matrix?.length) {
-    el.innerHTML = '<div class="empty"><div class="ico">⚡</div><p>Run inference to see energy scores.</p></div>';
-    return;
-  }
-  const mat=data.energy_matrix, N=data.energy_matrix_full_len||mat.length, step=data.energy_matrix_step||1, nM=mat[0]?.length||0;
-  el.innerHTML = `<div style="color:var(--muted);font-size:11px;margin-bottom:8px">${N.toLocaleString()} windows × ${nM} Q-BAT models${step>1?` · every ${step}th window`:''}</div><div class="chart-box"><canvas id="energyChart"></canvas></div>`;
-  if (S.charts.energy) S.charts.energy.destroy();
-  const colors = ['#3b82f6','#22c55e','#f59e0b'];
-  S.charts.energy = new Chart(document.getElementById('energyChart'), {
-    type:'line',
-    data:{labels:mat.map((_,i)=>i*step), datasets:Array.from({length:nM},(_,mi)=>({label:`Q-BAT Model ${mi+1}`, data:mat.map(r=>r[mi]), borderColor:colors[mi]||'#94a3b8', backgroundColor:'transparent', borderWidth:1, pointRadius:0, tension:0}))},
-    options: chartOpts('Window Index','Anomaly Energy'),
-  });
-}
-
-/* ── Routing tab ────────────────────────────────────── */
-function renderRouting(data) {
-  const el = document.getElementById('routingInner');
-  const rs = data?.routing_stats;
-  if (!rs) { el.innerHTML = '<div class="empty"><div class="ico">🔀</div><p>Run inference to see routing stats.</p></div>'; return; }
-  const edgeOnly = rs.total_windows - rs.routed_windows;
-  const edgePct  = (100 - rs.routing_pct).toFixed(1);
-  el.innerHTML = `
-    <div class="rt-grid">
-      <div class="rt-stat"><div class="num">${rs.total_windows.toLocaleString()}</div><div class="desc">Total windows</div></div>
-      <div class="rt-stat"><div class="num" style="color:var(--green)">${edgeOnly.toLocaleString()}</div><div class="desc">Edge only</div></div>
-      <div class="rt-stat"><div class="num" style="color:var(--amber)">${rs.routed_windows.toLocaleString()}</div><div class="desc">Sent to cloud</div></div>
-    </div>
-    <div style="position:relative;height:200px;max-width:240px;margin:0 auto"><canvas id="donutChart"></canvas></div>
-    <p style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.7;text-align:center">
-      Only <strong style="color:var(--amber)">${rs.routing_pct}%</strong> needed cloud re-analysis.
-      The edge handled the other <strong style="color:var(--green)">${edgePct}%</strong> locally.
-    </p>`;
-  if (S.charts.donut) S.charts.donut.destroy();
-  S.charts.donut = new Chart(document.getElementById('donutChart'), {
-    type:'doughnut',
-    data:{labels:['Edge Only','Routed to Cloud'],datasets:[{data:[edgeOnly,rs.routed_windows],backgroundColor:['#16a34a','#d97706'],borderColor:'#ffffff',borderWidth:3}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{labels:{color:'#475569',padding:14},position:'bottom'},tooltip:{callbacks:{label:ctx=>{const v=ctx.raw,p=(v/rs.total_windows*100).toFixed(1);return ` ${v.toLocaleString()} (${p}%)`}}}}},
-  });
-}
-
 /* ── Thresholds tab ─────────────────────────────────── */
 function renderThresholds(data) {
   const el = document.getElementById('thresholdsInner');
@@ -2094,8 +1981,8 @@ const TOUR_STEPS = [
   { title: '③ Watch the Pipeline Tab',
     desc: 'Switch here to see raw log messages, parsed sessions, and live stage-by-stage progress as each AI stage completes.',
     target: '.tab[data-tab="pipeline"]', pad: 6, pos: 'bottom' },
-  { title: '④ Explore Results & Analysis',
-    desc: 'The <strong>Results</strong> tab shows F1 / Precision / Recall charts. <strong>Analysis</strong> shows energy efficiency scores and routing decisions per session.',
+  { title: '④ Explore Results',
+    desc: 'The <strong>Results</strong> tab shows the Anomaly Timeline — ground truth, Edge AI predictions, and final Edge + Cloud predictions side by side.',
     target: '.tab[data-tab="results"]', pad: 6, pos: 'bottom' },
   { title: '⑤ Predict a Single Log Line',
     desc: 'In the <strong>Pipeline</strong> tab, click any raw log row to instantly run the full Edge → Routing → Cloud pipeline on just that one log. The verdict appears inline.',
