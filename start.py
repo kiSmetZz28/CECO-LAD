@@ -73,7 +73,12 @@ def _bat_ok(ds: str) -> bool:
 
 def _outputs_ok(ds: str) -> bool:
     out = ROOT / "outputs" / ds
-    return (out / "edge_preds.npy").exists() and (out / "hybrid_preds.npy").exists()
+    required = [
+        "ground_truth.npy", "edge_preds.npy", "hybrid_preds.npy",
+        "cloud_preds.npy", "routed_indices.npy",
+        "edge_preds_per_model.npy", "cloud_preds_per_model.npy",
+    ]
+    return all((out / f).exists() for f in required)
 
 
 # ── Dependency helpers ────────────────────────────────────────────────────────
