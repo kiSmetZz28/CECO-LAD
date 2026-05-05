@@ -38,7 +38,6 @@ class Encoder(nn.Module):
         self.norm = norm_layer
 
     def forward(self, x, attn_mask=None):
-        # x [B, L, D]
         series_list = []
         prior_list = []
         sigma_list = []
@@ -89,4 +88,4 @@ class EMAT(nn.Module):
         if self.output_attention:
             return enc_out, series, prior, sigmas
         else:
-            return enc_out  # [B, L, D]
+            return enc_out

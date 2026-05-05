@@ -168,5 +168,4 @@ def run(windows: np.ndarray, config: dict) -> np.ndarray:
         len(all_preds), len(combinations),
     )
 
-    # Each column is [N_windows, 1] binary; stack → [N_windows, n_models] → ensemble.
-    return ensemble_method(voting, np.concatenate(all_preds, axis=1))  # [N_windows]
+    return ensemble_method(voting, np.concatenate(all_preds, axis=1))

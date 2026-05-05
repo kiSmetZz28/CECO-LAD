@@ -28,12 +28,12 @@ _RUNNER_AVAILABLE = _RUNNER_BIN.is_file() and (os.name == "nt" or os.access(str(
 
 class EdgeResult(NamedTuple):
     """Output of edge_agent.run()."""
-    predictions: np.ndarray        # [n_windows] binary int
-    ground_truth: np.ndarray       # [n_windows] binary int
-    energy_matrix: np.ndarray      # [n_windows, n_models] test energy scores
-    train_energy_matrix: np.ndarray  # [n_windows, n_models] test energy (used as proxy for routing covariance)
-    thresholds: np.ndarray         # [n_models] per-model EM-GMM thresholds
-    test_windows: np.ndarray       # [n_windows, win_size, features] scaled float32
+    predictions: np.ndarray
+    ground_truth: np.ndarray
+    energy_matrix: np.ndarray
+    train_energy_matrix: np.ndarray
+    thresholds: np.ndarray
+    test_windows: np.ndarray
 
 
 def set_thresh_em(
@@ -267,7 +267,7 @@ def run(config: dict) -> EdgeResult:
         test_windows_list.append(x.numpy())
         label_list.append(labels.numpy().reshape(-1))
 
-    test_windows = np.concatenate(test_windows_list, axis=0)   # [N, win_size, features]
+    test_windows = np.concatenate(test_windows_list, axis=0)
     ground_truth = np.concatenate(label_list).astype(int)
 
     logging.info(
@@ -306,12 +306,12 @@ def run(config: dict) -> EdgeResult:
     n_models = len(thresholds_list)
 
     # ExecuTorch already outputs one energy score per timestep across all windows.
-    # Stack models into [N_total, n_models], compare to threshold, majority vote.
-    energy_matrix = np.concatenate(test_energy_cols, axis=1)   # [N_total, n_models]
+    # Stack models, compare to threshold, majority vote.
+    energy_matrix = np.concatenate(test_energy_cols, axis=1)
     thresholds    = np.array(thresholds_list)
 
-    per_model_preds = (energy_matrix > thresholds).astype(int)                      # [N_total, n_models]
-    predictions     = (per_model_preds.sum(axis=1) > n_models / 2).astype(int)     # [N_total]
+    per_model_preds = (energy_matrix > thresholds).astype(int)
+    predictions     = (per_model_preds.sum(axis=1) > n_models / 2).astype(int)
 
     # Ground truth is already per-timestep from DataLoader — no reshape needed.
     logging.info(

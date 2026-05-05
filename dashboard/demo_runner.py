@@ -161,7 +161,7 @@ def main() -> None:
     for x_batch, lbl_batch in test_loader:
         windows_list.append(x_batch.numpy())
         labels_list.append(lbl_batch.numpy().reshape(-1))
-    test_windows = np.concatenate(windows_list, axis=0)   # [N, win_size, input_c]
+    test_windows = np.concatenate(windows_list, axis=0)
     ground_truth = np.concatenate(labels_list).astype(int)
 
     # In demo/container mode cap the test set so inference finishes in ~3 min on CPU.
@@ -223,7 +223,7 @@ def main() -> None:
 
     energy_cols   = [r[0] for r in valid]
     thresh_arr    = np.array([r[1] for r in valid])
-    energy_matrix = np.concatenate(energy_cols, axis=1)          # [N, n_edge]
+    energy_matrix = np.concatenate(energy_cols, axis=1)
     per_model     = (energy_matrix > thresh_arr).astype(int)
     predictions   = (per_model.sum(axis=1) > len(valid) / 2).astype(int)
 

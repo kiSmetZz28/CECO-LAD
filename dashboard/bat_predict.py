@@ -69,21 +69,21 @@ def main() -> None:
         _out({"error": f"Input file not found: {args.input}"})
         return
 
-    arr      = np.load(args.input).astype(np.float32)   # [n_events, input_c]
+    arr      = np.load(args.input).astype(np.float32)
     n_events = len(arr)
     padded   = n_events < win_size
 
     if padded:
         pad = np.zeros((win_size - n_events, input_c), dtype=np.float32)
         arr = np.vstack([arr, pad])
-    arr = arr[:win_size]                                 # [win_size, input_c]
+    arr = arr[:win_size]
 
     try:
         _cuda = torch.cuda.is_available()
     except Exception:
         _cuda = False
     device = torch.device("cuda:0" if _cuda else "cpu")
-    x = torch.from_numpy(arr[np.newaxis]).float().to(device)  # [1, win_size, input_c]
+    x = torch.from_numpy(arr[np.newaxis]).float().to(device)
 
     # ── Load thresholds ───────────────────────────────────────────────────────
     thresh_rel  = cloud_cfg.get("thresholds_yaml", "")

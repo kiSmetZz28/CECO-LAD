@@ -82,21 +82,19 @@ def main() -> None:
 
     win_size = cfg.get("win_size", 100)
 
-    # Support both new format (routed_lines.npy [N, input_c]) and old format
-    # (routed_windows.npy [N, win_size, input_c]) produced by the old pipeline.
     lines_path   = os.path.join(out_base, "routed_lines.npy")
     windows_path = os.path.join(out_base, "routed_windows.npy")
 
     if os.path.exists(lines_path):
-        routed_lines = np.load(lines_path)   # [N_routed, input_c]
+        routed_lines = np.load(lines_path)
         input_c = routed_lines.shape[1]
         n_lines = len(routed_lines)
         # Drop the tail that doesn't fill a complete window.
         n_full   = (n_lines // win_size) * win_size
-        windows  = routed_lines[:n_full].reshape(-1, win_size, input_c)  # [N_win, win_size, input_c]
+        windows  = routed_lines[:n_full].reshape(-1, win_size, input_c)
         use_indices = routed_indices[:n_full]
     elif os.path.exists(windows_path):
-        windows = np.load(windows_path)      # [N_windows, win_size, input_c]
+        windows = np.load(windows_path)
         input_c = windows.shape[2]
         use_indices = routed_indices
     else:

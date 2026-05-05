@@ -143,7 +143,7 @@ def run_inference(inference_config_path: str) -> None:
         routed_lines = np.array([
             result.test_windows[i // win_size][i % win_size]
             for i in routed_indices
-        ], dtype=np.float32)  # [N_routed, input_c]
+        ], dtype=np.float32)
         np.save(os.path.join(out_base, 'routed_lines.npy'), routed_lines)
 
     # ── Stages 3+4: Cloud BAT inference + hybrid merge ────────────────────

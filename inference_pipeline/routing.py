@@ -19,7 +19,7 @@ def load_scores(score_files: List[str]) -> np.ndarray:
         arrays.append(scores)
         logging.info("Loaded scores from %s", path)
 
-    stacked = np.vstack(arrays).T  # [n_models, n_samples] -> [n_samples, n_models]
+    stacked = np.vstack(arrays).T
     logging.info("Stacked scores shape: %s", stacked.shape)
     return stacked
 

@@ -62,7 +62,7 @@ def compute_edge_ensemble(
             f"Length mismatch: prediction lengths {lengths}, labels length {len(gt)}"
         )
 
-    stacked = np.vstack(preds_list)  # [n_models, n_samples]
+    stacked = np.vstack(preds_list)
     votes = stacked.sum(axis=0)
     edge_raw = (votes >= (stacked.shape[0] // 2 + 1)).astype(int)
 
