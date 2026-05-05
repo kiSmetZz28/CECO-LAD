@@ -45,7 +45,7 @@ class _ExportableEMAT(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         output, series, prior, _ = self.model(x)
-        loss = torch.mean(self.criterion(x, output), dim=-1)  # [B, win_size]
+        loss = torch.mean(self.criterion(x, output), dim=-1)
 
         series_loss = 0.0
         prior_loss = 0.0
@@ -62,9 +62,9 @@ class _ExportableEMAT(nn.Module):
                 series_loss = series_loss + my_kl_loss(series[u], norm.detach()) * 50
                 prior_loss  = prior_loss  + my_kl_loss(norm, series[u].detach()) * 50
 
-        metric = torch.softmax((-series_loss - prior_loss), dim=-1)  # [B, win_size]
-        energy = metric * loss                                         # [B, win_size]
-        return energy.reshape(-1)                                      # [B * win_size]
+        metric = torch.softmax((-series_loss - prior_loss), dim=-1)
+        energy = metric * loss
+        return energy.reshape(-1)
 
 
 def convert_one(
