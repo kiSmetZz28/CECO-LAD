@@ -95,8 +95,17 @@ def _download_runner() -> bool:
 # ── OpenStack raw logs ────────────────────────────────────────────────────────
 
 def _os_logs_present() -> bool:
-    return OS_RAW_DIR.exists() and all(
-        (OS_RAW_DIR / f).is_file() for f in OS_RAW_FILES
+    if not OS_RAW_DIR.exists():
+        return False
+    # Minimum sizes for the full log files (truncated/sample versions are too small)
+    min_bytes = {
+        "openstack_normal1.log":  10_000_000,   # full ~14 MB
+        "openstack_normal2.log":  30_000_000,   # full ~38 MB
+        "openstack_abnormal.log":  4_000_000,   # full ~5.2 MB
+    }
+    return all(
+        (OS_RAW_DIR / f).is_file() and (OS_RAW_DIR / f).stat().st_size >= min_bytes.get(f, 0)
+        for f in OS_RAW_FILES
     )
 
 
