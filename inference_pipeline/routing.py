@@ -89,7 +89,7 @@ def select_indices_by_distance(
     distance_type: str = "ma",
     tolerance: float = 0.1,
 ) -> List[int]:
-    """Select indices of test samples farthest from the threshold point.
+    """Select indices of test samples closest to the threshold point (most uncertain).
 
     Parameters
     ----------

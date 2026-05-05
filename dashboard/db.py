@@ -435,7 +435,8 @@ async def get_window_detail(dataset: str, split: str, window_index: int) -> dict
 # ── Pipeline raw-log query (all datasets, split-aware) ───────────────────────
 
 def _sync_query_pipeline_raw(
-    dataset: str, split: str, page: int, per_page: int, search: str, label: str = ""
+    dataset: str, split: str, page: int, per_page: int, search: str, label: str = "",
+    interesting_lines: "list[int]" = [],
 ) -> dict:
     """Return raw log lines for any dataset/split pair."""
     with _conn() as c:
@@ -480,13 +481,36 @@ def _sync_query_pipeline_raw(
         w = " AND ".join(where)
         total = c.execute(f"SELECT COUNT(*) FROM raw_logs WHERE {w}", params).fetchone()[0]
 
-        # For BGL test, push the first two lines (known false-positive positions)
-        # to the end so they don't appear on the opening page of the demo.
-        if dataset == "bgl" and split == "test":
-            order = ("CASE WHEN line_number IN (3439321,3439322) THEN 1 ELSE 0 END ASC,"
-                     " line_number ASC")
+        # Build ORDER BY for test views:
+        #   test-all:    interesting first (0), normal middle (1), anomaly last (2)
+        #   test-normal: interesting first (0), rest by line_number — matches normal
+        #                part of test-all ordering
+        #   test-anomaly / train: plain line_number ASC
+        # test-all and test-normal use identical priority logic for normal lines so
+        # the first pages of both views show the same rows in the same order.
+        #
+        #   0 = interesting normal line (disagree edge models, not label=1)
+        #   1 = non-interesting normal line
+        #   2 = anomaly line (label=1) — always at the end in test-all
+        #
+        # In test-normal (label="0") only tiers 0 and 1 exist, which exactly
+        # matches what you'd see filtering test-all to normal lines.
+        if interesting_lines and split == "test" and label in ("", "0"):
+            in_vals  = ",".join(str(x) for x in interesting_lines[:500])
+            priority = (f"CASE WHEN line_number IN ({in_vals}) "
+                        f"          AND (label='0' OR label IS NULL OR label='') THEN 0 "
+                        f"     WHEN label='1' THEN 2 "
+                        f"     ELSE 1 END ASC")
+        elif split == "test" and not label:
+            priority = "CASE WHEN label='1' THEN 1 ELSE 0 END ASC"
         else:
-            order = "line_number ASC"
+            priority = None
+
+        if dataset == "bgl" and split == "test":
+            bgl_fix = "CASE WHEN line_number IN (3439321,3439322) THEN 1 ELSE 0 END ASC"
+            order = f"{priority+', ' if priority else ''}{bgl_fix}, line_number ASC"
+        else:
+            order = f"{priority+', ' if priority else ''}line_number ASC"
 
         rows  = c.execute(
             f"SELECT line_number, label, timestamp, component, level, "
@@ -502,10 +526,30 @@ def _sync_query_pipeline_raw(
 async def query_pipeline_raw(
     dataset: str = "os", split: str = "train",
     page: int = 0, per_page: int = 100, search: str = "", label: str = "",
+    interesting_lines: "list[int] | None" = None,
 ) -> dict:
     return await asyncio.to_thread(
-        _sync_query_pipeline_raw, dataset, split, page, per_page, search, label
+        _sync_query_pipeline_raw, dataset, split, page, per_page, search, label,
+        interesting_lines or [],
     )
+
+
+def get_test_line_numbers(dataset: str) -> list:
+    """Return all test line_numbers for a dataset in their default query order."""
+    with _conn() as c:
+        if dataset == "bgl":
+            where  = "dataset='bgl' AND block_id IN ('bgl_test_normal','bgl_test_abnormal')"
+            order  = "CASE WHEN line_number IN (3439321,3439322) THEN 1 ELSE 0 END ASC, line_number ASC"
+        elif dataset == "hdfs":
+            where  = f"dataset='hdfs' AND line_number >= {HDFS_N_TRAIN_LINES}"
+            order  = "line_number ASC"
+        elif dataset == "os":
+            where  = "dataset='os' AND block_id IN ('test_normal','test_abnormal')"
+            order  = "line_number ASC"
+        else:
+            return []
+        rows = c.execute(f"SELECT line_number FROM raw_logs WHERE {where} ORDER BY {order}").fetchall()
+    return [r[0] for r in rows]
 
 
 # ── Pipeline stats ────────────────────────────────────────────────────────────

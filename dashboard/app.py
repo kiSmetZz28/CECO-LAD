@@ -54,6 +54,75 @@ _TXT_PATHS: dict[str, dict[str, list[Path]]] = {
 # scaler state per dataset
 _scalers: dict[str, Optional[dict]] = {"bgl": None, "hdfs": None, "os": None}
 
+# Cache of "interesting" test line_numbers per dataset:
+# lines kept at edge where the three edge models disagree (not all 0 or all 1).
+# Used to sort these cases to the front of the raw-log pages.
+_interesting_lines: dict[str, list[int]] = {}
+
+
+def _build_interesting_lines(dataset: str) -> None:
+    """Compute and cache test line_numbers to surface at the top of the test-all view.
+
+    Selects an interleaved mix of:
+      - disagree + kept at edge  (mixed 0/1 edge votes, not routed to cloud)
+      - disagree + routed to cloud (mixed 0/1 edge votes, routed to cloud)
+    Both groups appear on the first pages so users see diverse routing outcomes.
+    Anomaly lines are left at the end by the SQL ORDER BY.
+    """
+    out_dir = ROOT / "outputs" / dataset.lower()
+    pm_path = out_dir / "edge_preds_per_model.npy"
+    ri_path = out_dir / "routed_indices.npy"
+    if not pm_path.exists():
+        return
+
+    pm = np.load(pm_path)
+    n_npy = len(pm)
+    routed_arr = np.load(ri_path) if ri_path.exists() else np.array([], dtype=np.int64)
+
+    is_routed = np.zeros(n_npy, dtype=bool)
+    if len(routed_arr):
+        valid_r = routed_arr[routed_arr < n_npy]
+        is_routed[valid_r] = True
+
+    row_sums = pm.sum(axis=1)
+    n_models = pm.shape[1]
+    disagree = (row_sums > 0) & (row_sums < n_models)
+
+    de_edge  = np.where(disagree & ~is_routed)[0]
+    de_cloud = np.where(disagree &  is_routed)[0]
+
+    def _sample(arr, n):
+        if len(arr) <= n:
+            return arr
+        idx = np.round(np.linspace(0, len(arr) - 1, n)).astype(int)
+        return arr[idx]
+
+    de_edge  = _sample(de_edge,  250)
+    de_cloud = _sample(de_cloud, 250)
+
+    # Interleave edge/cloud so both appear on page 1
+    max_len = max(len(de_edge), len(de_cloud))
+    interleaved = []
+    for i in range(max_len):
+        if i < len(de_edge):   interleaved.append(int(de_edge[i]))
+        if i < len(de_cloud):  interleaved.append(int(de_cloud[i]))
+
+    if not interleaved:
+        return
+
+    import db as _db_local
+    all_lns = _db_local.get_test_line_numbers(dataset)
+    if not all_lns:
+        return
+
+    n_db   = len(all_lns)
+    result: list[int] = []
+    for npy_i in interleaved:
+        db_pos = min(round(int(npy_i) * n_db / n_npy), n_db - 1)
+        result.append(all_lns[db_pos])
+
+    _interesting_lines[dataset] = list(dict.fromkeys(result))
+
 
 def _read_txt_lines(paths: list[Path]) -> list[str]:
     lines: list[str] = []
@@ -1273,7 +1342,10 @@ async def api_pipeline_raw_logs(
     label: str   = "",
 ):
     """Raw log lines for any dataset/split, with split-aware filtering."""
-    return await _db.query_pipeline_raw(dataset, split, page, per_page, search, label)
+    if dataset not in _interesting_lines:
+        await asyncio.to_thread(_build_interesting_lines, dataset)
+    interesting = _interesting_lines.get(dataset, [])
+    return await _db.query_pipeline_raw(dataset, split, page, per_page, search, label, interesting)
 
 
 @app.get("/api/pipeline/sessions")

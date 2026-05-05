@@ -752,8 +752,13 @@ select:focus{outline:none;border-color:var(--blue);}
             </div>
             <div class="pl-pager">
               <button class="btn" id="plRawPrev" onclick="plLoadRaw(PL.rawPage-1)" disabled>←</button>
-              <span id="plRawPagerInfo">—</span>
+              <span id="plRawPagerInfo" style="font-size:13px">—</span>
               <button class="btn" id="plRawNext" onclick="plLoadRaw(PL.rawPage+1)" disabled>→</button>
+              <span style="margin-left:8px;font-size:13px;color:var(--muted)">Go to page</span>
+              <input id="plRawPageInput" type="number" min="1" style="width:110px;padding:3px 6px;font-size:13px;border:1px solid var(--border);border-radius:4px;text-align:center"
+                onkeydown="if(event.key==='Enter') plRawJump()"
+                placeholder="1–…">
+              <button class="btn" style="font-size:13px;padding:3px 10px" onclick="plRawJump()">Go</button>
             </div>
           </div>
 
@@ -1588,9 +1593,12 @@ function setView(split, label, btn) {
   PL.split = split;
   PL.labelFilter = label;
   PL.rawPage = 0;
+  PL.rawTotal = 0;
   closeRawPredict();
   document.querySelectorAll('#plViewGroup .pill-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  const inp = document.getElementById('plRawPageInput');
+  if (inp) { inp.value = ''; inp.placeholder = '1–…'; }
   plLoad();
 }
 
@@ -1599,6 +1607,13 @@ async function plLoad() {
 }
 
 /* Raw logs column */
+function plRawJump() {
+  const input = document.getElementById('plRawPageInput');
+  const maxPage = Math.ceil(PL.rawTotal / PL.rawPerPage) - 1;
+  const p = Math.max(0, Math.min(maxPage, parseInt(input.value, 10) - 1));
+  if (!isNaN(p)) { input.value = ''; plLoadRaw(p); }
+}
+
 async function plLoadRaw(page) {
   PL.rawPage = Math.max(0, page);
   const search = encodeURIComponent((document.getElementById('plRawSearch')?.value||'').trim());
@@ -1627,7 +1642,6 @@ async function plLoadRaw(page) {
             ${isTrain ? '' : 'onclick="selectRawLog(this)" title="Click to predict"'}
             style="${isTrain ? 'cursor:default' : ''}">
           <div class="pr-line">
-            <span class="pr-idx">L${r.line_number}</span>
             <span class="pr-badge ${isAnom?'anom':'norm'}">${isAnom?'ANOM':'NORM'}</span>
             <span class="pr-ts">${esc(r.timestamp?.substring(0,19)||'—')}</span>
             ${isTrain ? '' : '<span style="margin-left:auto;font-size:9px;color:var(--blue);opacity:.7">▶ predict</span>'}
@@ -1645,6 +1659,7 @@ async function plLoadRaw(page) {
     document.getElementById('plRawNext').disabled = PL.rawPage>=maxPage;
     document.getElementById('plRawPagerInfo').textContent =
       `${(PL.rawPage*PL.rawPerPage+1).toLocaleString()}–${Math.min(PL.rawTotal,(PL.rawPage+1)*PL.rawPerPage).toLocaleString()} / ${PL.rawTotal.toLocaleString()}`;
+    document.getElementById('plRawPageInput').placeholder = `1–${(maxPage+1).toLocaleString()}`;
   } catch(e){body.innerHTML=`<div style="color:var(--red);padding:12px;font-size:11px">Error: ${esc(e.message)}</div>`;}
 }
 

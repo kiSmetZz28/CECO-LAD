@@ -117,6 +117,8 @@ def _run_edge_bat(
 def main() -> None:
     parser = argparse.ArgumentParser(description="CECO-LAD container demo inference.")
     parser.add_argument("--config", required=True, help="Inference YAML config path.")
+    parser.add_argument("--skip-edge", action="store_true",
+                        help="Skip Stage 1 (edge scan) and reuse existing energy_matrix.npy / edge_preds.npy.")
     args = parser.parse_args()
 
     os.chdir(str(ROOT))
@@ -147,92 +149,131 @@ def main() -> None:
     model_dir        = ROOT / cloud_cfg.get("model_save_path", "")
     cloud_thresholds = _load_thresholds(str(thresh_cloud_path))
 
-    # ── Stage 1: Edge scan ────────────────────────────────────────────────────
-    logging.info("=== Stage 1: Edge Q-BAT Inference ===")
-
-    # Load and scale test windows through the standard data pipeline.
-    # ensemble_param values are only used for train-mode resampling; dummy values work here.
-    test_loader = get_loader_segment(
-        [3, 1, 3, batch_sz], data_path,
-        batch_size=batch_sz, win_size=win_size, step=win_size,
-        mode="test", dataset=dataset,
-    )
-    windows_list, labels_list = [], []
-    for x_batch, lbl_batch in test_loader:
-        windows_list.append(x_batch.numpy())
-        labels_list.append(lbl_batch.numpy().reshape(-1))
-    test_windows = np.concatenate(windows_list, axis=0)
-    ground_truth = np.concatenate(labels_list).astype(int)
-
-    # In demo/container mode cap the test set so inference finishes in ~3 min on CPU.
-    # Use evenly-spaced indices so both normal and anomalous windows are sampled.
-    # Config key takes priority over env var so each dataset can have its own limit.
-    demo_max = cfg.get("demo_max_windows", int(os.getenv("DEMO_MAX_WINDOWS", "0")))
-    if demo_max > 0 and len(test_windows) > demo_max:
-        idx = np.linspace(0, len(test_windows) - 1, demo_max, dtype=int)
-        test_windows = test_windows[idx]
-        ground_truth = ground_truth[idx]
-        logging.info(
-            "Demo mode: using %d / %d test windows (evenly sampled).",
-            demo_max, len(idx) + (len(np.concatenate(labels_list)) - demo_max),
-        )
-
     try:
         _cuda = torch.cuda.is_available()
     except Exception:
         _cuda = False
     device = torch.device("cuda:0" if _cuda else "cpu")
-    x_tensor = torch.from_numpy(test_windows).float().to(device)
 
-    # Select 3 lightweight BAT checkpoints as edge-proxy models using the
-    # smallest hyperparameter values available for this dataset's cloud config.
+    # Select 3 lightweight BAT checkpoints as edge-proxy models.
     min_ep = min(cloud_cfg["num_epochs"])
     min_k  = min(cloud_cfg["k"])
     min_l  = min(cloud_cfg["e_layer_num"])
     edge_combos = [(min_ep, min_k, min_l, bsz) for bsz in sorted(cloud_cfg["batch_size"])[:3]]
-    n_edge = len(edge_combos)
 
-    # Mirror edge_agent.py log format → frontend "Q-BAT models in parallel" indicator
-    logging.info(
-        "Edge agent: %d test windows, running %d Q-BAT models in parallel.",
-        len(test_windows), n_edge,
-    )
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_edge) as executor:
-        futures = [
-            executor.submit(
-                _run_edge_bat,
-                combo, dataset, win_size, input_c,
-                model_dir, cloud_thresholds, x_tensor, device,
-            )
-            for combo in edge_combos
-        ]
-        raw_results = [f.result() for f in futures]
-
-    valid = [r for r in raw_results if r is not None]
-    if not valid:
-        logging.error(
-            "No edge BAT models ran successfully. "
-            "Check that checkpoints exist in %s and thresholds are in %s.",
-            model_dir, thresh_cloud_path,
+    if args.skip_edge:
+        # ── Stage 1: SKIPPED — load existing edge outputs ─────────────────────
+        logging.info("=== Stage 1: Skipped (--skip-edge) — loading existing edge outputs ===")
+        for fname in ("energy_matrix.npy", "edge_preds.npy", "ground_truth.npy"):
+            if not os.path.exists(os.path.join(out_base, fname)):
+                logging.error("--skip-edge requires %s but it was not found in %s", fname, out_base)
+                sys.exit(1)
+        energy_matrix = np.load(os.path.join(out_base, "energy_matrix.npy"))
+        ground_truth  = np.load(os.path.join(out_base, "ground_truth.npy"))
+        # Recover per-model thresholds from the edge threshold YAML
+        import yaml as _yaml
+        thresh_yaml = os.path.join(out_base, "thresholds_edge.yaml")
+        if os.path.exists(thresh_yaml):
+            with open(thresh_yaml) as _f:
+                _tlist = _yaml.safe_load(_f).get("models", [])
+            thresh_arr = np.array([t["threshold"] for t in _tlist])
+        else:
+            thresh_arr = np.array([
+                cloud_thresholds.get(f"{dataset}_e{c[0]}_k{c[1]}_l{c[2]}_b{c[3]}", 0.0)
+                for c in edge_combos
+            ])
+        # Still need scaled test windows to build routed windows for cloud.
+        test_loader = get_loader_segment(
+            [3, 1, 3, batch_sz], data_path,
+            batch_size=batch_sz, win_size=win_size, step=win_size,
+            mode="test", dataset=dataset,
         )
-        sys.exit(1)
+        test_windows = np.concatenate([x.numpy() for x, _ in test_loader], axis=0)
+        logging.info("Loaded edge outputs: %d lines, %d edge models.", len(ground_truth), energy_matrix.shape[1])
+    else:
+        # ── Stage 1: Edge scan ────────────────────────────────────────────────
+        logging.info("=== Stage 1: Edge Q-BAT Inference ===")
 
-    # Mirror edge_agent.py log format → frontend "Q-BAT models complete" indicator
-    logging.info("Edge agent: all %d/%d Q-BAT models complete.", len(valid), n_edge)
+        test_loader = get_loader_segment(
+            [3, 1, 3, batch_sz], data_path,
+            batch_size=batch_sz, win_size=win_size, step=win_size,
+            mode="test", dataset=dataset,
+        )
+        windows_list, labels_list = [], []
+        for x_batch, lbl_batch in test_loader:
+            windows_list.append(x_batch.numpy())
+            labels_list.append(lbl_batch.numpy().reshape(-1))
+        test_windows = np.concatenate(windows_list, axis=0)
+        ground_truth = np.concatenate(labels_list).astype(int)
 
-    energy_cols   = [r[0] for r in valid]
-    thresh_arr    = np.array([r[1] for r in valid])
-    energy_matrix = np.concatenate(energy_cols, axis=1)
-    per_model     = (energy_matrix > thresh_arr).astype(int)
-    predictions   = (per_model.sum(axis=1) > len(valid) / 2).astype(int)
+        demo_max = cfg.get("demo_max_windows", int(os.getenv("DEMO_MAX_WINDOWS", "0")))
+        if demo_max > 0 and len(test_windows) > demo_max:
+            idx = np.linspace(0, len(test_windows) - 1, demo_max, dtype=int)
+            test_windows = test_windows[idx]
+            ground_truth = ground_truth[idx]
+            logging.info("Demo mode: using %d / %d test windows (evenly sampled).",
+                         demo_max, len(idx) + (len(np.concatenate(labels_list)) - demo_max))
 
-    edge_adj = _point_adjust(ground_truth, predictions)
-    np.save(os.path.join(out_base, "edge_preds.npy"),     edge_adj)
-    np.save(os.path.join(out_base, "edge_preds_raw.npy"), predictions)
-    np.save(os.path.join(out_base, "ground_truth.npy"),   ground_truth)
-    np.save(os.path.join(out_base, "energy_matrix.npy"),  energy_matrix)
-    evaluate(ground_truth, edge_adj, prefix="Edge")
+        x_tensor = torch.from_numpy(test_windows).float().to(device)
+        n_edge   = len(edge_combos)
+        logging.info("Edge agent: %d test windows, running %d Q-BAT models in parallel.",
+                     len(test_windows), n_edge)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_edge) as executor:
+            futures = [executor.submit(_run_edge_bat, combo, dataset, win_size, input_c,
+                                       model_dir, cloud_thresholds, x_tensor, device)
+                       for combo in edge_combos]
+            raw_results = [f.result() for f in futures]
+
+        valid = [r for r in raw_results if r is not None]
+        if not valid:
+            logging.error("No edge BAT models ran successfully. Check checkpoints in %s.", model_dir)
+            sys.exit(1)
+        logging.info("Edge agent: all %d/%d Q-BAT models complete.", len(valid), n_edge)
+
+        energy_cols   = [r[0] for r in valid]
+        thresh_arr    = np.array([r[1] for r in valid])
+        energy_matrix = np.concatenate(energy_cols, axis=1)
+        per_model     = (energy_matrix > thresh_arr).astype(int)
+        predictions   = (per_model.sum(axis=1) > len(valid) / 2).astype(int)
+
+        edge_adj = _point_adjust(ground_truth, predictions)
+        np.save(os.path.join(out_base, "edge_preds.npy"),     edge_adj)
+        np.save(os.path.join(out_base, "edge_preds_raw.npy"), predictions)
+        np.save(os.path.join(out_base, "ground_truth.npy"),   ground_truth)
+        np.save(os.path.join(out_base, "energy_matrix.npy"),  energy_matrix)
+        evaluate(ground_truth, edge_adj, prefix="Edge")
+
+    # Compute training energy for routing covariance (uses normal distribution only).
+    # Try each edge combo as ensemble_param until one is accepted by the data loader.
+    train_energy_matrix = None
+    for combo in edge_combos:
+        ep, k, layers, bsz = combo
+        try:
+            train_loader = get_loader_segment(
+                [ep, k, layers, bsz], data_path,
+                batch_size=batch_sz, win_size=win_size, step=win_size,
+                mode="train", dataset=dataset,
+            )
+            train_windows_list = []
+            for x_batch, _ in train_loader:
+                train_windows_list.append(x_batch.numpy())
+            train_windows  = np.concatenate(train_windows_list, axis=0)
+            x_train_tensor = torch.from_numpy(train_windows).float().to(device)
+            train_energy_cols = []
+            for c in edge_combos:
+                res = _run_edge_bat(c, dataset, win_size, input_c,
+                                    model_dir, cloud_thresholds, x_train_tensor, device)
+                if res is not None:
+                    train_energy_cols.append(res[0])
+            if train_energy_cols:
+                train_energy_matrix = np.concatenate(train_energy_cols, axis=1)
+            break
+        except (ValueError, KeyError):
+            continue
+    if train_energy_matrix is None:
+        logging.warning("Could not load training data for covariance — falling back to test energy.")
+        train_energy_matrix = energy_matrix
 
     # ── Stage 2: Mahalanobis Routing ─────────────────────────────────────────
     logging.info("=== Stage 2: Mahalanobis Routing ===")
@@ -243,7 +284,7 @@ def main() -> None:
     routed_indices: list = []
     if energy_matrix.shape[1] >= 2:
         try:
-            _, inv_cov = compute_inv_cov(energy_matrix)
+            _, inv_cov = compute_inv_cov(train_energy_matrix)
             routed_indices = select_indices_by_distance(
                 test_scores=energy_matrix,
                 thresholds=thresh_arr,
@@ -261,7 +302,7 @@ def main() -> None:
 
     logging.info(
         "Routing: %d / %d lines selected to cloud (tolerance=%.0f%%).",
-        len(routed_indices), len(predictions), tolerance * 100,
+        len(routed_indices), len(ground_truth), tolerance * 100,
     )
     routed_idx_arr = np.array(routed_indices, dtype=int)
     np.save(os.path.join(out_base, "routed_indices.npy"), routed_idx_arr)
@@ -301,6 +342,9 @@ def main() -> None:
         int(cloud_preds.sum()), len(cloud_preds),
     )
 
+    if 'predictions' not in dir():
+        per_model  = (energy_matrix > thresh_arr).astype(int)
+        predictions = (per_model.sum(axis=1) > energy_matrix.shape[1] / 2).astype(int)
     hybrid_raw = predictions.copy()
     hybrid_raw[use_indices] = cloud_preds
 
