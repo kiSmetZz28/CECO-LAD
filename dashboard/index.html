@@ -1946,7 +1946,7 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
     const pct = nTotal > 0 ? (nAnom / nTotal * 100).toFixed(0) : 0;
     return `<div class="bar-track" style="margin:2px 0"><div class="bar-fill"
       style="width:${pct}%;background:${col}"></div></div>
-      <div style="font-size:9px;color:var(--muted)">${nAnom}/${nTotal} anomaly votes (${pct}%)</div>`;
+      <div style="font-size:11px;color:var(--muted)">${nAnom}/${nTotal} anomaly votes (${pct}%)</div>`;
   }
 
   function modelBreakdown(models, maxH) {
@@ -1954,9 +1954,8 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
     const rows = models.map(m => {
       const col = m.vote ? 'var(--red)' : 'var(--green)';
       return `<div class="pred-model-row" style="background:${m.vote?'rgba(220,38,38,.05)':'rgba(22,163,74,.05)'}">
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${m.model}</span>
-        <span style="flex:0 0 120px;text-align:right;color:var(--muted);font-size:9px">threshold: ${m.threshold.toFixed(4)}</span>
-        <span style="flex:0 0 34px;text-align:right;font-weight:700;color:${col}">${m.vote?'ANOM':'NORM'}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">${m.model}</span>
+        <span style="flex:0 0 40px;text-align:right;font-size:12px;font-weight:700;color:${col}">${m.vote?'ANOM':'NORM'}</span>
       </div>`;
     }).join('');
     return `<div style="max-height:${maxH}px;overflow-y:auto;border:1px solid var(--border);border-radius:5px;margin-top:6px">${rows}</div>`;
@@ -1997,27 +1996,27 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
 
       <!-- Edge AI -->
       <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
-        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge (Q-BAT)</div>
-        <span class="pr-badge ${edgeIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${edgeIsAnom?'ANOMALY':'NORMAL'}</span>
+        <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge (Q-BAT)</div>
+        <span class="pr-badge ${edgeIsAnom?'anom':'norm'}" style="font-size:12px;margin-bottom:4px;display:inline-block">${edgeIsAnom?'ANOMALY':'NORMAL'}</span>
         ${edgeN>1?voteBar(edge.n_anomaly_votes??0, edgeN, edgeIsAnom?'var(--red)':'var(--green)'):''}
         ${modelBreakdown(edge.model_results, 120)}
       </div>
 
       <!-- Routing -->
       <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
-        <div style="font-size:10px;font-weight:700;color:${routed?'var(--amber)':'var(--green)'};margin-bottom:5px">🔀 Routing</div>
-        <div style="font-size:11px;font-weight:700;color:${routed?'var(--amber)':'var(--muted)'}">
-          ${routed?'→ Routed to Cloud':'→ Edge result trusted'}
+        <div style="font-size:12px;font-weight:700;color:${routed?'var(--amber)':'var(--green)'};margin-bottom:5px">🔀 Routing</div>
+        <div style="font-size:13px;font-weight:700;color:${routed?'var(--amber)':'var(--muted)'}">
+          ${routed?'→ Routed to Cloud':'→ Retained at Edge'}
         </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:3px">${routing.reason??''}</div>
-        ${routing.avg_margin?`<div style="font-size:9px;color:var(--muted);margin-top:2px">avg margin: ${(routing.avg_margin*100).toFixed(1)}%</div>`:''}
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${routing.reason??''}</div>
+        ${routing.avg_margin?`<div style="font-size:11px;color:var(--muted);margin-top:2px">avg margin: ${(routing.avg_margin*100).toFixed(1)}%</div>`:''}
       </div>
     </div>
 
     <!-- Cloud AI — full width with scrollable model list -->
     <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
-      <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud (BAT)</div>
-      <span class="pr-badge ${cloudIsAnom?'anom':'norm'}" style="font-size:10px;margin-bottom:4px;display:inline-block">${cloudIsAnom?'ANOMALY':'NORMAL'}</span>
+      <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud (BAT)</div>
+      <span class="pr-badge ${cloudIsAnom?'anom':'norm'}" style="font-size:12px;margin-bottom:4px;display:inline-block">${cloudIsAnom?'ANOMALY':'NORMAL'}</span>
       ${cloudN>1?voteBar(cloud.n_anomaly_votes??d.n_anomaly_votes, cloudN, cloudIsAnom?'var(--red)':'var(--green)'):''}
       ${modelBreakdown(cloud.model_results, 280)}
     </div>

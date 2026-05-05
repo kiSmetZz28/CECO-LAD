@@ -306,25 +306,27 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
     """Return single-session results from the last full pipeline run's .npy files.
 
     Returns None if pipeline outputs don't exist (fall back to fresh prediction).
-    Uses point-adjusted predictions so results match the reported pipeline metrics.
     """
     out_base = ROOT / "outputs" / dataset.lower()
     needed   = ["edge_preds.npy", "hybrid_preds.npy"]
     if not all((out_base / f).exists() for f in needed):
         return None
 
-    edge_adj = np.load(out_base / "edge_preds.npy")    # point-adjusted edge
-    hybrid   = np.load(out_base / "hybrid_preds.npy")  # point-adjusted hybrid
+    edge_adj = np.load(out_base / "edge_preds.npy")
+    hybrid   = np.load(out_base / "hybrid_preds.npy")
 
     # Load actual routed event indices so routing display reflects reality.
     _ri_path = out_base / "routed_indices.npy"
     _routed_indices = np.load(_ri_path) if _ri_path.exists() else np.array([], dtype=np.int64)
 
     cfg_path = ROOT / "configs" / "inference" / f"{dataset}.yaml"
-    win_size = 100
+    win_size    = 100
+    routing_pct = 10
     if cfg_path.exists():
         with open(cfg_path) as _f:
-            win_size = yaml.safe_load(_f).get("win_size", 100)
+            _cfg        = yaml.safe_load(_f)
+            win_size    = _cfg.get("win_size", 100)
+            routing_pct = int(_cfg.get("routing_tolerance", 0.1) * 100)
 
     # Both BGL and OS use proportional mapping from the index returned by
     # _find_window_for_raw to the correct position in the npy event arrays.
@@ -379,7 +381,7 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
         with open(path) as _f:
             return yaml.safe_load(_f).get("models", [])
 
-    # Edge: per-model point-adjusted votes from edge_preds_per_model.npy
+    # Edge: per-model votes from edge_preds_per_model.npy
     edge_model_results = []
     pm_path = out_base / "edge_preds_per_model.npy"
     if pm_path.exists():
@@ -406,7 +408,7 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
         "n_normal_votes": n_edge - n_anom_edge, "model_results": edge_model_results,
     }
 
-    # Cloud: per-model point-adjusted votes from cloud_preds_per_model.npy
+    # Cloud: per-model votes from cloud_preds_per_model.npy
     cloud_thresh_list   = _load_thresholds_yaml(out_base / "thresholds_cloud.yaml")
     cloud_model_results = []
     cp_path = out_base / "cloud_preds_per_model.npy"
@@ -440,10 +442,12 @@ def _lookup_pipeline_result(dataset: str, session_idx: int) -> Optional[dict]:
     }
 
     routing = {
-        "routed":     routed,
-        "avg_margin": 0.0,
-        "reason":     "edge uncertain — routed to cloud" if routed
-                      else "edge result confirmed by hybrid",
+        "routed":      routed,
+        "routing_pct": routing_pct,
+        "avg_margin":  0.0,
+        "reason":      f"top {routing_pct}% smallest Mahalanobis distance — forwarded to cloud"
+                       if routed else
+                       "large Mahalanobis distance — confident prediction retained at edge",
     }
 
     return {
@@ -1098,7 +1102,7 @@ def _build_container_infer_cmd(ds: str, tolerance: float, distance: str) -> list
       Stage 1 — 3 fast BAT models as edge-proxy scan (parallel)
       Stage 2 — Mahalanobis routing
       Stage 3 — full BAT ensemble on routed windows (parallel)
-      Stage 4 — point-adjusted hybrid metrics
+      Stage 4 — hybrid metrics
 
     Falls back to the pre-computed status message when BAT checkpoints or a
     cloud section are absent for the requested dataset (e.g. BGL, HDFS).

@@ -7,10 +7,6 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 def evaluate(gt: np.ndarray, pred: np.ndarray, prefix: str = "") -> float:
     """Compute and log Accuracy / Precision / Recall / F-score.
 
-    Expects predictions that are already point-adjusted. Point adjustment
-    (filling entire GT anomaly segments on first detection) is the caller's
-    responsibility and must not be applied twice.
-
     Parameters
     ----------
     gt : np.ndarray

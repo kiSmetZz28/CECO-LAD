@@ -8,7 +8,7 @@ the edge scan and the cloud re-check:
   Stage 1  Edge scan  — 3 fast BAT checkpoints on all test windows (parallel)
   Stage 2  Routing    — Mahalanobis distance selects uncertain windows
   Stage 3  Cloud      — full BAT ensemble on routed windows (parallel)
-  Stage 4  Evaluation — point-adjusted hybrid metrics
+  Stage 4  Evaluation — hybrid metrics
 
 Log messages deliberately mirror edge_agent.py / cloud_expert.py format so
 the dashboard's live-progress parser (parseLiveLine in index.html) works
