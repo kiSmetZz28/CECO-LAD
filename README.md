@@ -11,16 +11,6 @@
 
 ---
 
-## Demo
-
-Single log prediction across all three datasets — Edge AI (Q-BAT) routing decision and Cloud AI (BAT ensemble) re-analysis shown live.
-
-<video src="dashboard/static/demo.mp4" controls width="100%"></video>
-
-> If the video does not play above, [watch it on the live demo](https://kismetzz-ceco-lad.hf.space/).
-
----
-
 ## How It Works
 
 CECO-LAD detects anomalies in system logs using a hybrid Cloud-Edge collaboration pipeline:
