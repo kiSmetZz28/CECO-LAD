@@ -133,8 +133,16 @@ def _download_os_logs() -> bool:
 # ── BGL split logs ────────────────────────────────────────────────────────────
 
 def _bgl_split_present() -> bool:
-    return BGL_SPLIT_DIR.exists() and all(
-        (BGL_SPLIT_DIR / f).is_file() for f in BGL_SPLIT_FILES
+    if not BGL_SPLIT_DIR.exists():
+        return False
+    min_bytes = {
+        "bgl_train.log":        400_000_000,  # full ~489 MB
+        "bgl_test_normal.log":  100_000_000,  # full ~172 MB
+        "bgl_test_abnormal.log": 40_000_000,  # full ~55 MB
+    }
+    return all(
+        (BGL_SPLIT_DIR / f).is_file() and (BGL_SPLIT_DIR / f).stat().st_size >= min_bytes.get(f, 0)
+        for f in BGL_SPLIT_FILES
     )
 
 
@@ -165,8 +173,16 @@ def _download_bgl_raw() -> bool:
 # ── HDFS split logs ───────────────────────────────────────────────────────────
 
 def _hdfs_split_present() -> bool:
-    return HDFS_SPLIT_DIR.exists() and all(
-        (HDFS_SPLIT_DIR / f).is_file() for f in HDFS_SPLIT_FILES
+    if not HDFS_SPLIT_DIR.exists():
+        return False
+    min_bytes = {
+        "train.log":        10_000_000,   # full ~12 MB
+        "test_normal.log": 1_000_000_000, # full ~1.4 GB
+        "test_abnormal.log":  30_000_000, # full ~38 MB
+    }
+    return all(
+        (HDFS_SPLIT_DIR / f).is_file() and (HDFS_SPLIT_DIR / f).stat().st_size >= min_bytes.get(f, 0)
+        for f in HDFS_SPLIT_FILES
     )
 
 
