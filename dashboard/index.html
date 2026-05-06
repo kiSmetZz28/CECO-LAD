@@ -612,6 +612,12 @@ select:focus{outline:none;border-color:var(--blue);}
       </div>
     </div>
 
+    <!-- Demo video -->
+    <div class="card">
+      <div class="step-hdr"><span class="step-title">Demo Video</span></div>
+      <button class="btn" style="width:100%;font-size:13px" onclick="openDemoVideo()">▶ Watch Demo</button>
+    </div>
+
     <!-- Quick results -->
     <div class="card" id="quickStatsCard" style="display:none">
       <div class="card-title">Latest Results</div>
@@ -875,6 +881,19 @@ select:focus{outline:none;border-color:var(--blue);}
 
   </main>
 </div><!-- /layout -->
+
+<!-- ══ DEMO VIDEO MODAL ═════════════════════════════════ -->
+<div class="modal-overlay" id="demoVideoModal" onclick="closeDemoVideo(event)">
+  <div class="modal-box" style="max-width:900px">
+    <button class="modal-close" onclick="closeDemoVideo()">✕</button>
+    <div class="modal-title">Demo — Single Log Prediction</div>
+    <video id="demoVideoPlayer" controls style="width:100%;border-radius:8px;background:#000"
+           preload="none">
+      <source src="/static/demo.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </div>
+</div>
 
 <!-- ══ WINDOW DETAIL MODAL ══════════════════════════════ -->
 <div class="modal-overlay" id="winModal" onclick="closeWinModal(event)">
@@ -2094,6 +2113,17 @@ function tourClickOutside(e) {
   if (e.target === document.getElementById('tourIntroOverlay')) closeTour();
 }
 window.addEventListener('resize', ()=>{ if (_tourStep >= 0) _renderTourStep(); });
+
+/* ── Demo video ─────────────────────────────────────── */
+function openDemoVideo() {
+  document.getElementById('demoVideoModal').classList.add('open');
+}
+function closeDemoVideo(e) {
+  if (e && e.target !== document.getElementById('demoVideoModal')) return;
+  document.getElementById('demoVideoModal').classList.remove('open');
+  const v = document.getElementById('demoVideoPlayer');
+  v.pause(); v.currentTime = 0;
+}
 
 /* ── Helpers ────────────────────────────────────────── */
 function pct(v)  { return v!==undefined?(v*100).toFixed(2)+'%':'—'; }

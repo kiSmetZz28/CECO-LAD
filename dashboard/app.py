@@ -14,6 +14,7 @@ import numpy as np
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 ROOT = Path(__file__).parent.parent
@@ -24,6 +25,11 @@ sys.path.insert(0, str(ROOT))
 import db as _db
 
 app = FastAPI(title="CECO-LAD Dashboard")
+
+# Serve static assets (demo video etc.) from the dashboard directory
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Set DEMO_MODE=1 to disable pipeline execution and live inference (for hosted demos).
 DEMO_MODE = os.getenv("DEMO_MODE", "0") == "1"
