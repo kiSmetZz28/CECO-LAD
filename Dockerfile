@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     "fastapi>=0.100" \
     "uvicorn[standard]>=0.20" \
+    "aiofiles>=23.0" \
     "numpy>=1.24" \
     "scipy>=1.10" \
     "scikit-learn>=1.3" \
@@ -46,6 +47,7 @@ COPY dashboard/index.html      /app/dashboard/index.html
 COPY dashboard/bat_predict.py  /app/dashboard/bat_predict.py
 COPY dashboard/cloud_runner.py /app/dashboard/cloud_runner.py
 COPY dashboard/demo_runner.py  /app/dashboard/demo_runner.py
+COPY dashboard/static/         /app/dashboard/static/
 
 # ── Static data ───────────────────────────────────────────────────────────────
 COPY outputs/  /app/outputs/
