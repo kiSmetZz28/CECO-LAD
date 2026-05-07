@@ -104,6 +104,7 @@ api.upload_folder(
         "outputs/**/*.npy",
         # Dev / CI artefacts
         ".git/**",
+        ".claude/**",
         "**/__pycache__/**",
         "**/*.pyc",
         ".pytest_cache/**",
