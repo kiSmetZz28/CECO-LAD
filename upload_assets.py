@@ -39,6 +39,7 @@ BGL_DATA_FILES = ["bgl_train.txt", "bgl_test_normal.txt", "bgl_test_abnormal.txt
 BAT_OS_DIR    = ROOT / "checkpoints" / "bat" / "os"
 BAT_BGL_DIR   = ROOT / "checkpoints" / "bat" / "bgl"
 BAT_HDFS_DIR  = ROOT / "checkpoints" / "bat" / "hdfs"
+QBAT_DIR      = ROOT / "checkpoints" / "qbat"
 RUNNER_PATH   = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 
 # ── Pre-computed inference outputs (npy arrays) ───────────────────────────────
@@ -194,8 +195,26 @@ def main() -> None:
         upload(api, repo, zip_path, "bat/hdfs.zip")
         zip_path.unlink()
 
+    # ── Q-BAT quantized checkpoints (.pte) ───────────────────────────────────
+    print("\n── Step 9/10  Q-BAT quantized checkpoints ──")
+    for ds in ("bgl", "hdfs", "os"):
+        pte_dir   = QBAT_DIR / ds
+        pte_files = sorted(pte_dir.glob("*.pte")) if pte_dir.exists() else []
+        if not pte_files:
+            print(f"  SKIP {ds}: no .pte files found in {pte_dir}"); continue
+        zip_path = Path(tempfile.mktemp(suffix=".zip"))
+        total_mb = sum(f.stat().st_size for f in pte_files) // 1024 // 1024
+        print(f"  Zipping {len(pte_files)} Q-BAT {ds.upper()} models (~{total_mb} MB)…")
+        # Store as ds/filename.pte so extraction into checkpoints/qbat/ works cleanly
+        import zipfile as _zf
+        with _zf.ZipFile(zip_path, "w", _zf.ZIP_DEFLATED, compresslevel=6) as z:
+            for f in pte_files:
+                z.write(f, arcname=f"{ds}/{f.name}")
+        upload(api, repo, zip_path, f"qbat/{ds}.zip")
+        zip_path.unlink()
+
     # ── Pre-computed npy outputs (prediction results + per-model arrays) ─────────
-    print("\n── Step 9/9  Pre-computed inference outputs (npy) ──")
+    print("\n── Step 10/10  Pre-computed inference outputs (npy) ──")
     for ds in ("bgl", "hdfs", "os"):
         out_dir = ROOT / "outputs" / ds
         files   = [out_dir / f for f in OUTPUT_NP_FILES if (out_dir / f).exists()]

@@ -44,6 +44,10 @@ outputs/
 # SQLite database (rebuilt at runtime, too large for GitHub)
 *.db
 
+# Large video files (>100 MB GitHub limit) — deploy_hf.py uploads them to HF Space directly
+*.mp4
+*.mov
+
 # ExecuTorch source + build tree (~1.4 GB, downloaded via tools/download_data.py)
 inference_pipeline/executorch/
 inference_pipeline/executorch.zip

@@ -54,9 +54,10 @@ print("  Space ready.")
 # ── Step 3: Upload ────────────────────────────────────────────────────────────
 print("\nStep 3/3  Uploading files…")
 print("  Skipped: checkpoints/bat/         (3.5 GB — downloaded at first launch)")
+print("  Skipped: checkpoints/qbat/        (218 MB — downloaded at first launch)")
 print("  Skipped: executorch build tree     (305 MB compiled libs — not needed in repo)")
-print("  executor_runner: downloaded at container startup from Google Drive")
-print("  Uploading: code + data + outputs + qbat checkpoints (~220 MB)")
+print("  executor_runner: downloaded at container startup from HF assets repo")
+print("  Uploading: code + data + outputs (~86 MB, well under 1 GB Space limit)")
 print("  No git-lfs needed — large files are chunked automatically.\n")
 
 # executor_runner is NOT uploaded here — it is downloaded at container startup
@@ -91,6 +92,8 @@ api.upload_folder(
         "README.md",             # already uploaded above with HF front matter
         # BAT checkpoints (3.5 GB) — downloaded at runtime from HF dataset repo
         "checkpoints/bat/**",
+        # Q-BAT checkpoints (218 MB) — downloaded at runtime from HF dataset repo
+        "checkpoints/qbat/**",
         # Entire executorch directory — compiled libs not needed in Space repo
         "inference_pipeline/executorch/**",
         # Local database — rebuilt from scratch on startup

@@ -937,9 +937,21 @@ async def _startup():
     # Preload BAT models into RAM only when no separate cloud env is available
     # (i.e. HF Spaces / Docker where CLOUD_PYTHON == this interpreter).
     # Locally, the hybrid conda env subprocess is faster and uses the GPU.
+    #
+    # On HF Spaces the 11 M-row HDFS ingest and the ~7 GB of PyTorch model
+    # weights would compete for the same RAM if started simultaneously.
+    # Deferring model loading until ingest finishes keeps peak usage low:
+    #   - ingest runs alone  →  HDFS DB is built faster with less I/O contention
+    #   - models load after  →  reads from warm page-cache, no extra I/O pressure
+    # When no ingest is running (_ingest_running is False from the start) the
+    # while-loop exits immediately and models are preloaded right away.
     if CLOUD_PYTHON == sys.executable:
-        for _ds in ("os", "bgl"):
-            asyncio.create_task(asyncio.to_thread(_preload_bat_models, _ds))
+        async def _preload_after_ingest():
+            while _ingest_running:
+                await asyncio.sleep(30)
+            for _ds in ("os", "bgl"):
+                await asyncio.to_thread(_preload_bat_models, _ds)
+        asyncio.create_task(_preload_after_ingest())
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────

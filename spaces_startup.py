@@ -35,6 +35,10 @@ BGL_CKPT_DIR  = ROOT / "checkpoints" / "bat" / "bgl"
 HDFS_CKPT_DIR = ROOT / "checkpoints" / "bat" / "hdfs"
 MIN_CKPTS     = 81
 
+# ── Q-BAT quantized checkpoints ───────────────────────────────────────────────
+QBAT_DIR      = ROOT / "checkpoints" / "qbat"
+MIN_QBAT      = 3   # 3 .pte files per dataset
+
 # ── executor_runner binary ────────────────────────────────────────────────────
 RUNNER_PATH = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 
@@ -241,6 +245,43 @@ def _download_checkpoints(dataset: str, ckpt_dir: Path) -> bool:
         return False
 
 
+# ── Q-BAT quantized checkpoints ───────────────────────────────────────────────
+
+def _qbat_present(dataset: str) -> bool:
+    d = QBAT_DIR / dataset
+    return d.exists() and len(list(d.glob("*.pte"))) >= MIN_QBAT
+
+
+def _download_qbat(dataset: str) -> bool:
+    print(f"[startup] Q-BAT {dataset.upper()} models not found. Downloading from HF (~50–100 MB)…",
+          flush=True)
+    zip_path = QBAT_DIR / f"{dataset}.zip"
+    if not _hf_download(f"qbat/{dataset}.zip", zip_path):
+        print(f"[startup] Q-BAT {dataset.upper()} download failed — edge inference unavailable.",
+              flush=True)
+        return False
+    try:
+        dest = QBAT_DIR / dataset
+        dest.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            # Zip stores files as ds/filename.pte; extract flat into dest/
+            for member in zf.namelist():
+                fname = Path(member).name
+                if fname.endswith(".pte"):
+                    with zf.open(member) as src, open(dest / fname, "wb") as out:
+                        out.write(src.read())
+        zip_path.unlink(missing_ok=True)
+        n = len(list(dest.glob("*.pte")))
+        if n >= MIN_QBAT:
+            print(f"[startup] {n} Q-BAT {dataset.upper()} models ready.", flush=True)
+            return True
+        print(f"[startup] Only {n}/{MIN_QBAT} Q-BAT {dataset.upper()} models extracted.", flush=True)
+        return False
+    except Exception as exc:
+        print(f"[startup] Q-BAT {dataset.upper()} extraction error: {exc}", flush=True)
+        return False
+
+
 # ── BGL data files ────────────────────────────────────────────────────────────
 
 def _bgl_data_present() -> bool:
@@ -362,6 +403,13 @@ if __name__ == "__main__":
         print("[startup] executor_runner present — skipping download.", flush=True)
     else:
         _download_runner()
+
+    for _ds in ("bgl", "hdfs", "os"):
+        if _qbat_present(_ds):
+            n = len(list((QBAT_DIR / _ds).glob("*.pte")))
+            print(f"[startup] {n} Q-BAT {_ds.upper()} models present — skipping download.", flush=True)
+        else:
+            _download_qbat(_ds)
 
     if _ckpts_present(OS_CKPT_DIR):
         print(f"[startup] {len(list(OS_CKPT_DIR.glob('*.pth')))} BAT OS checkpoints present — skipping download.", flush=True)

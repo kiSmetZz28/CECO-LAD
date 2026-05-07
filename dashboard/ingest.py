@@ -81,6 +81,7 @@ def _rebuild_indexes() -> None:
             CREATE INDEX IF NOT EXISTS idx_win_ds         ON windows(dataset, split);
             CREATE INDEX IF NOT EXISTS idx_win_blk        ON windows(block_id) WHERE block_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_win_lbl        ON windows(dataset, split, label);
+            CREATE INDEX IF NOT EXISTS idx_rl_lbl_ln      ON raw_logs(dataset, label, line_number);
         """)
 
 

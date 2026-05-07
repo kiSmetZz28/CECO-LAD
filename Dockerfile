@@ -54,10 +54,10 @@ COPY outputs/  /app/outputs/
 COPY data/     /app/data/
 COPY configs/  /app/configs/
 
-# ── Q-BAT edge checkpoints (218 MB — bundled in image) ───────────────────────
-COPY checkpoints/qbat/ /app/checkpoints/qbat/
+# ── Q-BAT checkpoints downloaded at container startup by spaces_startup.py ────
+# (not bundled in the image — kept in HF assets repo to stay under 1 GB limit)
 
-# ── Download helper + startup (fetches BAT cloud checkpoints at first launch) ─
+# ── Download helper + startup (fetches Q-BAT + BAT checkpoints at first launch) ─
 COPY tools/download_checkpoints.py /app/tools/download_checkpoints.py
 COPY spaces_startup.py             /app/spaces_startup.py
 

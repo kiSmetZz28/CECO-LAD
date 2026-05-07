@@ -92,6 +92,8 @@ def init_db() -> None:
                 ON raw_logs(block_id) WHERE block_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_rl_lbl
                 ON raw_logs(dataset, label);
+            CREATE INDEX IF NOT EXISTS idx_rl_lbl_ln
+                ON raw_logs(dataset, label, line_number);
 
             CREATE TABLE IF NOT EXISTS windows (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -579,6 +581,37 @@ def _sync_query_pipeline_raw(
                 ).fetchall()
                 rows = (int_rows[start:] if start < n_int else []) + ni_rows
 
+            return {"total": total, "page": page, "per_page": per_page,
+                    "rows": [dict(r) for r in rows]}
+
+        # ── HDFS test-anomaly fast path ───────────────────────────────────────
+        # The standard CASE-expression sort triggers a filesort of ~284k rows.
+        # Two range queries on idx_rl_lbl_ln (dataset, label, line_number) avoid
+        # any filesort: non-padded rows served first in line_number order, then
+        # the ≤10 padded rows appended at the back.
+        if dataset == "hdfs" and split == "test" and label == "1" and not search:
+            _ta0_v  = HDFS_N_TRAIN_LINES + HDFS_N_TEST_NORMAL_LINES  # 10_887_338
+            _ta_end = _ta0_v + _CTX - 1                               # 10_887_347
+            _base   = "dataset='hdfs' AND label='1'"
+            _non_q  = (f"{_SEL} WHERE {_base} AND line_number > {_ta_end}"
+                       f" ORDER BY line_number ASC")
+            pad_rows = c.execute(
+                f"{_SEL} WHERE {_base} AND line_number BETWEEN {_ta0_v} AND {_ta_end}"
+                f" ORDER BY line_number ASC"
+            ).fetchall()
+            n_pad = len(pad_rows)
+            n_non = total - n_pad
+            start = page * per_page
+            end   = start + per_page
+            if end <= n_non:
+                rows = c.execute(_non_q + " LIMIT ? OFFSET ?",
+                                 [per_page, start]).fetchall()
+            elif start >= n_non:
+                rows = list(pad_rows)[start - n_non : end - n_non]
+            else:
+                head = c.execute(_non_q + " LIMIT ? OFFSET ?",
+                                 [n_non - start, start]).fetchall()
+                rows = list(head) + list(pad_rows)[:end - n_non]
             return {"total": total, "page": page, "per_page": per_page,
                     "rows": [dict(r) for r in rows]}
 
