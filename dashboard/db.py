@@ -495,14 +495,102 @@ def _sync_query_pipeline_raw(
         #
         # In test-normal (label="0") only tiers 0 and 1 exist, which exactly
         # matches what you'd see filtering test-all to normal lines.
-        if interesting_lines and split == "test" and label in ("", "0"):
-            in_vals  = ",".join(str(x) for x in interesting_lines[:500])
-            priority = (f"CASE WHEN line_number IN ({in_vals}) "
-                        f"          AND (label='0' OR label IS NULL OR label='') THEN 0 "
-                        f"     WHEN label='1' THEN 2 "
-                        f"     ELSE 1 END ASC")
-        elif split == "test" and not label:
-            priority = "CASE WHEN label='1' THEN 1 ELSE 0 END ASC"
+        _SEL = (
+            "SELECT line_number, label, timestamp, component, level, "
+            "CASE WHEN length(content)>300 THEN substr(content,1,300)||'…' "
+            "     ELSE content END AS content, block_id "
+            "FROM raw_logs"
+        )
+
+        # ── Padding-zone SQL expression ────────────────────────────────────────
+        # Returns 1 when an entry is in the first _CTX (=10) positions of its
+        # sub-split file, meaning it sits at a session start and always has
+        # NO_EVENT padding in its forward sequence.  Used as secondary sort so
+        # these entries are pushed to the back of every tier while all other
+        # interesting-case ordering is preserved.
+        _CTX = 10
+        if dataset == "bgl":
+            _tn0 = BGL_N_TRAIN_LINES                             # 3_439_321
+            _ta0 = BGL_N_TRAIN_LINES + BGL_N_TEST_NORMAL_LINES  # 4_365_033
+            _pad = (f"CASE WHEN line_number BETWEEN {_tn0} AND {_tn0+_CTX-1} THEN 1 "
+                    f"     WHEN line_number BETWEEN {_ta0} AND {_ta0+_CTX-1} THEN 1 "
+                    f"     ELSE 0 END")
+        elif dataset == "hdfs":
+            _tn0 = HDFS_N_TRAIN_LINES                                # 95_125
+            _ta0 = HDFS_N_TRAIN_LINES + HDFS_N_TEST_NORMAL_LINES    # 10_887_338
+            _pad = (f"CASE WHEN line_number BETWEEN {_tn0} AND {_tn0+_CTX-1} THEN 1 "
+                    f"     WHEN line_number BETWEEN {_ta0} AND {_ta0+_CTX-1} THEN 1 "
+                    f"     ELSE 0 END")
+        elif dataset == "os":
+            _tn0 = 52_312                            # after 52 312 train entries
+            _ta0 = 52_312 + OS_N_TEST_NORMAL_LINES  # 189_386
+            _pad = (f"CASE WHEN block_id='test_normal'   AND line_number < {_tn0+_CTX} THEN 1 "
+                    f"     WHEN block_id='test_abnormal' AND line_number < {_ta0+_CTX} THEN 1 "
+                    f"     ELSE 0 END")
+        else:
+            _pad = "0"
+
+        # ── Two-query path: ALL datasets, test split, with interesting lines ───
+        # Solves two problems at once:
+        #  1. HDFS (11 M rows): CASE ORDER BY triggers a full filesort (minutes).
+        #  2. All datasets: SQL ORDER BY within "interesting" tier uses
+        #     line_number ASC, silently discarding the has_padding sort already
+        #     applied to _interesting_lines.  Two-query restores that order so
+        #     complete-context cases truly come first.
+        # Layout:  interesting lines (no-padding first per _interesting_lines)
+        #       →  remaining rows: non-interesting normal (pad-back, ln ASC)
+        #                       then anomaly (pad-back, ln ASC)
+        if (interesting_lines and split == "test" and label in ("", "0")
+                and not search):
+            in_vals   = ",".join(str(x) for x in interesting_lines[:500])
+            ln_to_pos = {ln: i for i, ln in enumerate(interesting_lines[:500])}
+
+            # Query 1: interesting normal rows (fast IN lookup via index)
+            int_rows = c.execute(
+                f"{_SEL} WHERE {w} AND line_number IN ({in_vals}) "
+                f"AND (label='0' OR label IS NULL OR label='')"
+            ).fetchall()
+            # Restore _interesting_lines order (no-padding first, already sorted)
+            int_rows = sorted(int_rows, key=lambda r: ln_to_pos.get(r[0], 9999))
+
+            n_int = len(int_rows)
+            start = page * per_page
+            end   = start + per_page
+
+            if end <= n_int:
+                # Whole page fits inside interesting lines — no second query needed
+                rows = int_rows[start:end]
+            else:
+                # Query 2: remaining rows — exclude interesting set, then:
+                #   - for test-all (label=""): normal first, anomaly last within
+                #     each group → pad-back secondary sort preserves context quality
+                #   - for test-normal (label="0"): only normal rows, pad-back
+                ni_offset = max(0, start - n_int)
+                ni_limit  = per_page - max(0, n_int - start)
+                if label == "":
+                    ni_order = (f"CASE WHEN label='1' THEN 1 ELSE 0 END ASC, "
+                                f"{_pad} ASC, line_number ASC")
+                else:
+                    ni_order = f"{_pad} ASC, line_number ASC"
+                ni_rows = c.execute(
+                    f"{_SEL} WHERE {w} AND line_number NOT IN ({in_vals}) "
+                    f"ORDER BY {ni_order} LIMIT ? OFFSET ?",
+                    params + [ni_limit, ni_offset],
+                ).fetchall()
+                rows = (int_rows[start:] if start < n_int else []) + ni_rows
+
+            return {"total": total, "page": page, "per_page": per_page,
+                    "rows": [dict(r) for r in rows]}
+
+        # ── Standard path: train, filtered/search views, and test-anomaly ─────
+        # Add _pad as secondary sort for test views so first-session padding
+        # entries are pushed to the back without changing the primary tier order.
+        if split == "test" and not label:
+            # test-all without interesting_lines: anomaly last, padding back
+            priority = f"CASE WHEN label='1' THEN 1 ELSE 0 END ASC, {_pad} ASC"
+        elif split == "test" and label == "1":
+            # test-anomaly: only anomaly rows — push padding zone to back
+            priority = f"{_pad} ASC"
         else:
             priority = None
 
@@ -512,11 +600,8 @@ def _sync_query_pipeline_raw(
         else:
             order = f"{priority+', ' if priority else ''}line_number ASC"
 
-        rows  = c.execute(
-            f"SELECT line_number, label, timestamp, component, level, "
-            f"CASE WHEN length(content)>300 THEN substr(content,1,300)||'…' "
-            f"     ELSE content END AS content, block_id "
-            f"FROM raw_logs WHERE {w} ORDER BY {order} LIMIT ? OFFSET ?",
+        rows = c.execute(
+            f"{_SEL} WHERE {w} ORDER BY {order} LIMIT ? OFFSET ?",
             params + [per_page, page * per_page],
         ).fetchall()
         return {"total": total, "page": page, "per_page": per_page,

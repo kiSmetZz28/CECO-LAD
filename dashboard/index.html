@@ -331,6 +331,22 @@ select:focus{outline:none;border-color:var(--blue);}
   background:#1a1d27;color:#86efac;
   max-height:52px;overflow:hidden;word-break:break-word;line-height:1.5;
 }
+.rpp-ctx{
+  border-bottom:1px solid var(--border);padding:7px 14px;
+  background:var(--bg);max-height:240px;overflow-y:auto;
+}
+.rpp-ctx-title{
+  font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.07em;margin-bottom:5px;position:sticky;top:0;background:var(--bg);padding-bottom:3px;
+}
+.rpp-ctx-row{
+  display:flex;align-items:flex-start;gap:7px;font-size:10px;
+  padding:2px 0;border-bottom:1px solid rgba(0,0,0,.04);
+}
+.rpp-ctx-row:last-child{border-bottom:none;}
+.rpp-ctx-pos{font-family:monospace;font-weight:700;color:var(--muted);min-width:30px;flex-shrink:0;padding-top:1px;}
+.rpp-ctx-msg{font-family:monospace;color:var(--text);word-break:break-all;white-space:pre-wrap;flex:1;line-height:1.4;}
+.rpp-ctx-pad .rpp-ctx-pos,.rpp-ctx-pad .rpp-ctx-msg{color:var(--border);font-style:italic;}
 /* ── Predict result shared styles ──────────────────────── */
 .sess-result-panel{
   background:var(--bg);border:1px solid var(--border);border-radius:7px;
@@ -433,6 +449,49 @@ select:focus{outline:none;border-color:var(--blue);}
   font-size:12px;font-weight:600;transition:background .12s;
 }
 .btn-help:hover{background:var(--bg);color:var(--text);}
+
+/* ── Context-window float tooltip ───────────────────────── */
+.ctx-float{
+  position:fixed;z-index:4000;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:0 8px 28px rgba(0,0,0,.16);
+  padding:10px 12px;width:440px;
+  pointer-events:none;display:none;
+}
+.ctx-float.visible{display:block;}
+.ctx-float-title{
+  font-size:9px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:7px;padding-bottom:5px;
+  border-bottom:1px solid var(--border);
+}
+.ctx-float-row{
+  display:flex;align-items:baseline;gap:7px;
+  padding:2px 0;border-bottom:1px solid var(--bg);
+  font-size:10px;
+}
+.ctx-float-row:last-child{border-bottom:none;}
+.ctx-float-pos{
+  font-family:monospace;font-weight:700;
+  color:var(--muted);min-width:30px;flex-shrink:0;
+  font-size:10px;
+}
+.ctx-float-msg{
+  font-family:monospace;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex:1;font-size:10px;
+}
+.ctx-float-ts{font-size:9px;color:var(--muted);flex-shrink:0;}
+.ctx-float-pad .ctx-float-pos{color:var(--border);}
+.ctx-float-pad .ctx-float-msg{color:var(--border);font-style:italic;}
+.ctx-float-cur{
+  margin-top:5px;padding-top:5px;border-top:1px solid var(--border);
+  display:flex;align-items:baseline;gap:7px;font-size:10px;
+}
+.ctx-float-cur .ctx-float-pos{color:var(--text);}
+.ctx-float-cur .ctx-float-msg{color:var(--text);font-weight:600;}
+.ctx-float-loading{font-size:11px;color:var(--muted);font-style:italic;padding:4px 0;}
 </style>
 </head>
 <body>
@@ -784,6 +843,10 @@ select:focus{outline:none;border-color:var(--blue);}
             <button class="btn" style="margin-left:auto;padding:2px 8px;font-size:11px" onclick="closeRawPredict()">✕</button>
           </div>
           <div id="rppLog" class="rpp-log"></div>
+          <div id="rppCtx" class="rpp-ctx" style="display:none">
+            <div class="rpp-ctx-title">Forward sequence — 10 preceding events (context window)</div>
+            <div id="rppCtxRows"></div>
+          </div>
           <div id="rppResult" style="padding:10px 14px 12px"></div>
         </div>
 
@@ -1775,6 +1838,30 @@ async function selectRawLog(el) {
   badge.innerHTML     = '';
   logDiv.textContent  = content;
 
+  // ── Load forward sequence (context window) for this log entry ──
+  (async () => {
+    const ctxDiv  = document.getElementById('rppCtx');
+    const ctxRows = document.getElementById('rppCtxRows');
+    ctxDiv.style.display = 'block';
+    ctxRows.innerHTML = '<span style="font-size:10px;color:var(--muted);font-style:italic">Loading…</span>';
+    const key = `${S.dataset}|${lineNum}`;
+    if (!_ctxCache[key]) {
+      try {
+        const url = `/api/pipeline/context-window?dataset=${encodeURIComponent(S.dataset)}&line_number=${lineNum}&block_id=${encodeURIComponent(blockId)}`;
+        _ctxCache[key] = await fetch(url).then(r => r.json());
+      } catch(e) { _ctxCache[key] = {error: 'Failed to load'}; }
+    }
+    const d = _ctxCache[key];
+    if (!d || d.error) {
+      ctxRows.innerHTML = `<span style="font-size:10px;color:var(--muted)">${esc(d?.error||'No data')}</span>`;
+      return;
+    }
+    ctxRows.innerHTML = (d.context || []).map(r => {
+      if (r.is_padding) return `<div class="rpp-ctx-row rpp-ctx-pad"><span class="rpp-ctx-pos">${esc('t'+r.pos)}</span><span class="rpp-ctx-msg">— NO_EVENT (padding)</span></div>`;
+      return `<div class="rpp-ctx-row"><span class="rpp-ctx-pos">${esc('t'+r.pos)}</span><span class="rpp-ctx-msg">${esc(r.content||'')}</span></div>`;
+    }).join('');
+  })();
+
   if (_rawPredictCtrl) _rawPredictCtrl.abort();
   _rawPredictCtrl = new AbortController();
 
@@ -2135,6 +2222,146 @@ function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 function fmtBytes(n){ return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'; }
 function fmtNum(n){ if(n===undefined||n===null)return'—'; if(n>=1e6)return(n/1e6).toFixed(1)+'M'; if(n>=1e3)return(n/1e3).toFixed(1)+'K'; return String(n); }
 function levelTag(lvl){ const l=(lvl||'').toUpperCase(); if(l==='ERROR'||l==='FATAL')return'tag-edge'; if(l==='WARNING'||l==='WARN')return'tag-cloud'; return''; }
+/* ── Context-window float tooltip ───────────────────────── */
+const _ctxCache = {};      // key: `${dataset}|${line_number}` → response data
+let   _ctxVisible    = false;
+let   _ctxCurrentRow = null;  // the .pl-row element currently being hovered
+let   _ctxTipEl      = null;
+let   _ctxBodyEl     = null;
+
+function _ctxInit() {
+  if (_ctxTipEl) return;
+  _ctxTipEl  = document.getElementById('ctxFloatTip');
+  _ctxBodyEl = document.getElementById('ctxFloatBody');
+}
+
+function _ctxPosition(mouseX, mouseY) {
+  const W = window.innerWidth, H = window.innerHeight;
+  const tw = _ctxTipEl.offsetWidth  || 460;
+  const th = _ctxTipEl.offsetHeight || 280;
+  const GAP = 14;
+  let left = mouseX + GAP;
+  let top  = mouseY - 20;
+  if (left + tw > W - 8) left = mouseX - tw - GAP;
+  if (top  + th > H - 8) top  = H - th - 8;
+  if (top < 8) top = 8;
+  _ctxTipEl.style.left = left + 'px';
+  _ctxTipEl.style.top  = top  + 'px';
+}
+
+function _ctxLevelColor(lvl) {
+  const l = (lvl || '').toUpperCase();
+  if (l === 'ERROR' || l === 'FATAL')   return 'var(--red)';
+  if (l === 'WARNING' || l === 'WARN')  return 'var(--amber)';
+  if (l === 'INFO')                     return 'var(--blue)';
+  return 'var(--muted)';
+}
+
+function _ctxRender(data) {
+  if (!data || data.error) {
+    _ctxBodyEl.innerHTML = `<div class="ctx-float-loading">${esc(data?.error || 'No data')}</div>`;
+    return;
+  }
+  const rows = (data.context || []).map(r => {
+    const posStr = 't' + r.pos;
+    if (r.is_padding) {
+      return `<div class="ctx-float-row ctx-float-pad">
+        <span class="ctx-float-pos">${esc(posStr)}</span>
+        <span class="ctx-float-msg">— NO_EVENT (padding)</span>
+      </div>`;
+    }
+    const lvlClr = _ctxLevelColor(r.level);
+    const ts     = (r.timestamp || '').substring(0, 19);
+    const msg    = (r.content   || '').substring(0, 120);
+    return `<div class="ctx-float-row">
+      <span class="ctx-float-pos">${esc(posStr)}</span>
+      <span class="ctx-float-msg"><span style="color:${lvlClr};margin-right:4px">${esc(r.level||'')}</span>${esc(msg)}</span>
+      <span class="ctx-float-ts">${esc(ts)}</span>
+    </div>`;
+  }).join('');
+
+  const cur = data.current;
+  const curHtml = cur ? `<div class="ctx-float-cur">
+    <span class="ctx-float-pos">▶ t</span>
+    <span class="ctx-float-msg">${esc((cur.content || '').substring(0, 120))}</span>
+    <span class="ctx-float-ts">${esc((cur.timestamp || '').substring(0, 19))}</span>
+  </div>` : '';
+
+  _ctxBodyEl.innerHTML = rows + curHtml;
+}
+
+async function _ctxShow(el, mouseX, mouseY) {
+  _ctxInit();
+  const dataset    = S.dataset;
+  const lineNumber = el.dataset.line;
+  const blockId    = el.dataset.bid || '';
+  const key        = `${dataset}|${lineNumber}`;
+
+  _ctxPosition(mouseX, mouseY);
+  _ctxTipEl.classList.add('visible');
+  _ctxVisible = true;
+
+  // If already cached, render immediately with no flicker
+  if (_ctxCache[key]) {
+    _ctxRender(_ctxCache[key]);
+    return;
+  }
+
+  // Not cached yet — show loading state, then fetch
+  _ctxBodyEl.innerHTML = '<div class="ctx-float-loading">Loading context…</div>';
+  try {
+    const url = `/api/pipeline/context-window?dataset=${encodeURIComponent(dataset)}&line_number=${lineNumber}&block_id=${encodeURIComponent(blockId)}`;
+    _ctxCache[key] = await fetch(url).then(r => r.json());
+  } catch(e) {
+    _ctxCache[key] = {error: 'Failed to load'};
+  }
+  // Only render if the user is still hovering this same row
+  if (_ctxVisible && _ctxCurrentRow === el) _ctxRender(_ctxCache[key]);
+}
+
+function _ctxHide() {
+  _ctxInit();
+  _ctxVisible    = false;
+  _ctxCurrentRow = null;
+  _ctxTipEl.classList.remove('visible');
+}
+
+/* Attach hover listeners via event delegation on the raw log body */
+document.addEventListener('DOMContentLoaded', () => {
+  const rawBody = document.getElementById('plRawBody');
+  if (!rawBody) return;
+
+  rawBody.addEventListener('mouseover', e => {
+    const row = e.target.closest('.pl-row');
+    if (!row || !row.dataset.line) return;
+    // Skip if already showing this exact row — mouseover bubbles from child elements
+    // so it fires repeatedly as the mouse moves over spans within the same row.
+    if (row === _ctxCurrentRow) return;
+    _ctxCurrentRow = row;
+    _ctxShow(row, e.clientX, e.clientY);
+  });
+
+  rawBody.addEventListener('mouseout', e => {
+    const row = e.target.closest('.pl-row');
+    if (!row) return;
+    // relatedTarget is the element the mouse moved TO.
+    // If it's still inside the same row (moving between child spans), do nothing.
+    if (row.contains(e.relatedTarget)) return;
+    _ctxHide();
+  });
+
+  rawBody.addEventListener('mousemove', e => {
+    if (_ctxVisible) _ctxPosition(e.clientX, e.clientY);
+  });
+});
+
 </script>
+
+<!-- Context-window floating tooltip -->
+<div class="ctx-float" id="ctxFloatTip">
+  <div class="ctx-float-title">Forward sequence — context window (size = 10 preceding events)</div>
+  <div id="ctxFloatBody"></div>
+</div>
+
 </body>
 </html>

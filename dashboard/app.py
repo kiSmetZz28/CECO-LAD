@@ -117,17 +117,108 @@ def _build_interesting_lines(dataset: str) -> None:
         return
 
     import db as _db_local
-    all_lns = _db_local.get_test_line_numbers(dataset)
-    if not all_lns:
+    import sqlite3 as _sqlite3
+
+    # Map npy indices → raw log line_numbers using arithmetic, NOT a full DB
+    # fetch.  For HDFS the naive approach (get_test_line_numbers) returns 11 M
+    # rows and takes several minutes; direct arithmetic is O(1).
+    # Line_numbers are assigned sequentially during ingest (no gaps), so
+    # all_lns[db_pos] == first_test_ln + db_pos exactly.
+    if dataset == "bgl":
+        first_test_ln = _db_local.BGL_N_TRAIN_LINES
+        n_db = _db_local.BGL_N_TEST_NORMAL_LINES + _db_local.BGL_N_TEST_ABNORMAL_LINES
+    elif dataset == "hdfs":
+        first_test_ln = _db_local.HDFS_N_TRAIN_LINES
+        n_db = _db_local.HDFS_N_TEST_NORMAL_LINES + _db_local.HDFS_N_TEST_ABNORMAL_LINES
+    elif dataset == "os":
+        # OS train_normal occupies lines 0..N-1; test starts immediately after.
+        # Look up the exact start with a single MIN query (fast, indexed).
+        _db_path = str(Path(__file__).parent / "ceco_lad.db")
+        try:
+            with _sqlite3.connect(_db_path, timeout=30) as _c:
+                _row = _c.execute(
+                    "SELECT MIN(line_number) FROM raw_logs "
+                    "WHERE dataset='os' AND block_id='test_normal'"
+                ).fetchone()
+                first_test_ln = _row[0] if (_row and _row[0] is not None) else 52312
+        except Exception:
+            first_test_ln = 52312
+        n_db = _db_local.OS_N_TEST_NORMAL_LINES + _db_local.OS_N_TEST_ABNORMAL_LINES
+    else:
         return
 
-    n_db   = len(all_lns)
+    if n_db == 0:
+        return
+
     result: list[int] = []
     for npy_i in interleaved:
         db_pos = min(round(int(npy_i) * n_db / n_npy), n_db - 1)
-        result.append(all_lns[db_pos])
+        result.append(first_test_ln + db_pos)
 
-    _interesting_lines[dataset] = list(dict.fromkeys(result))
+    result = list(dict.fromkeys(result))
+
+    # Push entries whose forward sequence contains NO_EVENT padding (fewer than
+    # _CTX_LEN preceding entries in the same session) to the back while
+    # preserving the relative interesting-case order within each group.
+    #
+    # Strategy differs by dataset because of how line_numbers are assigned:
+    #   BGL / OS  — split-level block_id; entries are CONSECUTIVE within a split
+    #               file, so position = ln − MIN(ln in split).  2 batch queries.
+    #   HDFS      — block-level block_id (blk_-XXX); entries from the same block
+    #               are INTERLEAVED in the raw log with other blocks, so
+    #               ln − MIN(ln in block) >> actual preceding count.  Needs real
+    #               COUNT per entry, but blocks are tiny (≤42 events) and indexed.
+    db_path = str(Path(__file__).parent / "ceco_lad.db")
+    has_padding: set[int] = set()
+    try:
+        with _sqlite3.connect(db_path, timeout=30) as _c:
+            # Step 1 — batch fetch block_id for every result entry (1 query)
+            ph = ",".join("?" * len(result))
+            bid_rows = _c.execute(
+                f"SELECT line_number, block_id FROM raw_logs "
+                f"WHERE dataset=? AND line_number IN ({ph})",
+                [dataset] + result,
+            ).fetchall()
+            ln_to_bid = {r[0]: r[1] for r in bid_rows}
+
+            if dataset == "hdfs":
+                # Exact COUNT per entry — necessary because HDFS blocks are
+                # interleaved in the raw log so ln−min_ln ≠ preceding count.
+                # ~500 queries, each O(block_size ≤ 42) via idx_rl_blk index.
+                for ln in result:
+                    bid = ln_to_bid.get(ln)
+                    if bid:
+                        cnt = _c.execute(
+                            "SELECT COUNT(*) FROM raw_logs "
+                            "WHERE dataset=? AND block_id=? AND line_number<?",
+                            (dataset, bid, ln),
+                        ).fetchone()[0]
+                        if cnt < _CTX_LEN:
+                            has_padding.add(ln)
+            else:
+                # BGL / OS: entries within the same split file have consecutive
+                # line_numbers, so position = ln − MIN(ln in split). 1 more query.
+                bid_set = list(set(ln_to_bid.values()))
+                if bid_set:
+                    ph2 = ",".join("?" * len(bid_set))
+                    min_rows = _c.execute(
+                        f"SELECT block_id, MIN(line_number) FROM raw_logs "
+                        f"WHERE dataset=? AND block_id IN ({ph2}) GROUP BY block_id",
+                        [dataset] + bid_set,
+                    ).fetchall()
+                    bid_to_min = {r[0]: r[1] for r in min_rows}
+                    for ln in result:
+                        bid = ln_to_bid.get(ln)
+                        if bid and (ln - bid_to_min.get(bid, ln)) < _CTX_LEN:
+                            has_padding.add(ln)
+    except Exception:
+        pass  # skip reordering if DB not ready; original order is preserved
+
+    # Partition: complete-context first (original order), padding last (original order)
+    result = [ln for ln in result if ln not in has_padding] + \
+             [ln for ln in result if ln in has_padding]
+
+    _interesting_lines[dataset] = result
 
 
 def _read_txt_lines(paths: list[Path]) -> list[str]:
@@ -827,6 +918,9 @@ async def predict_single(
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def _startup():
+    # Always clear the interesting-lines cache so the padding-aware ordering
+    # is recomputed fresh on the first request after every server restart.
+    _interesting_lines.clear()
     await asyncio.to_thread(_db.init_db)
     # Always ingest if data is missing — ingest functions skip gracefully when
     # external log files are absent, and fall back to synthetic raw logs for OS.
@@ -1338,6 +1432,76 @@ async def api_pipeline_stats(dataset: str):
 
 # ── Unified pipeline view (all datasets) ─────────────────────────────────────
 
+@app.get("/api/pipeline/context-window")
+async def api_context_window(
+    dataset:     str = "os",
+    line_number: int = 0,
+    block_id:    str = "",
+):
+    """Return the preceding _CTX_LEN (=10) raw log entries for one log line.
+
+    For HDFS the context is scoped to the same block_id (identifier partition).
+    For BGL/OpenStack the context is the preceding lines in the same split file
+    (time-based partition — consecutive raw log entries form one sequence).
+    """
+    import sqlite3 as _sqlite3
+    db_path = str(Path(__file__).parent / "ceco_lad.db")
+
+    def _fetch():
+        with _sqlite3.connect(db_path, timeout=30) as c:
+            c.row_factory = _sqlite3.Row
+            # For HDFS, block_id is the block identifier (e.g. blk_-XXX) so this
+            # naturally scopes context to the same session.
+            # For BGL/OpenStack, block_id is the split name (e.g. bgl_test_normal)
+            # so this scopes context to the same split file, which approximates
+            # the time-window sequence boundary for consecutive entries.
+            rows = c.execute(
+                "SELECT line_number, content, timestamp, level, component "
+                "FROM raw_logs "
+                "WHERE dataset=? AND block_id=? AND line_number<? "
+                "ORDER BY line_number DESC LIMIT ?",
+                (dataset, block_id, line_number, _CTX_LEN),
+            ).fetchall()
+            cur = c.execute(
+                "SELECT line_number, content, timestamp, level, component "
+                "FROM raw_logs WHERE dataset=? AND line_number=?",
+                (dataset, line_number),
+            ).fetchone()
+        return list(reversed(rows)), cur   # oldest-first context, current entry
+
+    try:
+        rows, cur = await asyncio.to_thread(_fetch)
+    except Exception as exc:
+        return {"error": str(exc), "context": [], "current": None}
+
+    # Build exactly _CTX_LEN slots, padding with NO_EVENT at the front
+    context = []
+    n_pad = _CTX_LEN - len(rows)
+    for i in range(_CTX_LEN):
+        pos = i - _CTX_LEN          # -10 … -1
+        if i < n_pad:
+            context.append({"pos": pos, "is_padding": True,
+                             "line_number": None, "content": None,
+                             "timestamp": None, "level": None})
+        else:
+            row = rows[i - n_pad]
+            context.append({"pos": pos, "is_padding": False,
+                             "line_number": int(row["line_number"]),
+                             "content": row["content"],
+                             "timestamp": row["timestamp"],
+                             "level": row["level"]})
+
+    current = None
+    if cur:
+        current = {"line_number": int(cur["line_number"]),
+                   "content": cur["content"],
+                   "timestamp": cur["timestamp"],
+                   "level": cur["level"]}
+
+    return {"context": context, "current": current,
+            "partition": "identifier" if dataset == "hdfs" else "time"}
+
+
 @app.get("/api/pipeline/raw-logs")
 async def api_pipeline_raw_logs(
     dataset: str = "os",
@@ -1348,6 +1512,10 @@ async def api_pipeline_raw_logs(
     label: str   = "",
 ):
     """Raw log lines for any dataset/split, with split-aware filtering."""
+    # Rebuild if missing or if the cached list has never had the padding-sort applied
+    # (detected by checking whether the list is present in _interesting_lines; a fresh
+    # server start always rebuilds, and _build_interesting_lines pops the key before
+    # writing so stale values from a previous code version are never silently reused).
     if dataset not in _interesting_lines:
         await asyncio.to_thread(_build_interesting_lines, dataset)
     interesting = _interesting_lines.get(dataset, [])
