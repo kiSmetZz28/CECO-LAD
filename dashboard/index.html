@@ -525,15 +525,15 @@ select:focus{outline:none;border-color:var(--blue);}
     <div class="welcome-body">
       <div class="welcome-arch">
         <div class="welcome-arch-inner">
-          <div class="wa-node"><span class="wa-icon">📋</span><span class="wa-lbl">Raw Logs</span><span class="wa-sub">system events</span></div>
+          <div class="wa-node"><span class="wa-icon">📋</span><span class="wa-lbl">Raw Logs</span></div>
           <span class="wa-arrow">→</span>
-          <div class="wa-node"><span class="wa-icon">⚡</span><span class="wa-lbl">Edge AI</span><span class="wa-sub">fast Q-BAT scan</span></div>
+          <div class="wa-node"><span class="wa-icon">⚡</span><span class="wa-lbl">Edge</span></div>
           <span class="wa-arrow">→</span>
-          <div class="wa-node"><span class="wa-icon">🔀</span><span class="wa-lbl">Routing</span><span class="wa-sub">uncertainty filter</span></div>
+          <div class="wa-node"><span class="wa-icon">🔀</span><span class="wa-lbl">Routing</span></div>
           <span class="wa-arrow">→</span>
-          <div class="wa-node"><span class="wa-icon">☁️</span><span class="wa-lbl">Cloud AI</span><span class="wa-sub">81 BAT models</span></div>
+          <div class="wa-node"><span class="wa-icon">☁️</span><span class="wa-lbl">Cloud</span></div>
           <span class="wa-arrow">→</span>
-          <div class="wa-node"><span class="wa-icon">🎯</span><span class="wa-lbl">Result</span><span class="wa-sub">anomaly / normal</span></div>
+          <div class="wa-node"><span class="wa-icon">🎯</span><span class="wa-lbl">Result</span></div>
         </div>
       </div>
       <p style="font-size:12px;color:var(--muted);line-height:1.65;margin:0 0 4px">
@@ -604,7 +604,7 @@ select:focus{outline:none;border-color:var(--blue);}
         <div style="font-size:13px;color:var(--muted);line-height:1.7;max-width:480px;margin:0 auto 20px;">
           <strong>HDFS</strong> raw log files are too large to include in this demo.
           Select <strong>OpenStack</strong> or <strong>BGL</strong> to run the full
-          four-stage live pipeline (Edge AI → Routing → Cloud AI → Hybrid result).
+          four-stage live pipeline (Edge → Routing → Cloud → Hybrid result).
         </div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <button class="btn btn-run"
@@ -671,12 +671,20 @@ select:focus{outline:none;border-color:var(--blue);}
 
     <!-- Run -->
     <div class="card">
-      <div class="step-hdr"><span class="step-title">Run Analysis</span></div>
-      <button class="btn btn-run" id="runBtn" onclick="runPipeline()">▶  Start Analysis</button>
+      <div class="step-hdr"><span class="step-title">Run Analysis — Full Test Set</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">
+        Runs the test set end-to-end through all pipeline stages
+        and reports aggregate metrics (accuracy, precision, recall, F1).
+      </div>
+      <button class="btn btn-run" id="runBtn" onclick="runPipeline()">▶  Start Full Test Set Analysis</button>
       <div style="height:8px"></div>
       <button class="btn btn-danger" id="stopBtn" onclick="stopPipeline()" disabled style="width:100%">■  Stop</button>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.7;text-align:center">
-        Edge AI → Smart Routing → Cloud AI
+        Edge → Selective Routing → Cloud
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);line-height:1.5">
+        💡 To predict a <strong>single log line</strong>, scroll down to the
+        <strong>Pipeline</strong> table and <strong>click any raw log row</strong>.
       </div>
     </div>
 
@@ -713,7 +721,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <div class="pb-arrow">›</div>
       <div class="pb-stage" id="pb-edge" onclick="showTab('pipeline',document.querySelector('.tab[data-tab=pipeline]'))">
         <span class="pb-ico">⚡</span>
-        <span class="pb-title">Edge AI</span>
+        <span class="pb-title">Edge</span>
         <span class="pb-sub">fast local scan (Q-BAT, 3 models)</span>
       </div>
       <div class="pb-arrow">›</div>
@@ -725,7 +733,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <div class="pb-arrow">›</div>
       <div class="pb-stage" id="pb-cloud" onclick="showTab('results',document.querySelector('.tab[data-tab=results]'))">
         <span class="pb-ico">☁️</span>
-        <span class="pb-title">Cloud AI</span>
+        <span class="pb-title">Cloud</span>
         <span class="pb-sub">deep re-analysis (BAT, 81 models)</span>
       </div>
       <div class="pb-arrow">›</div>
@@ -747,7 +755,7 @@ select:focus{outline:none;border-color:var(--blue);}
         </div>
       </div>
       <div class="stage-track">
-        <div class="stage-step" id="stg-edge"><span class="s-icon">⚡</span>Edge AI Scan</div>
+        <div class="stage-step" id="stg-edge"><span class="s-icon">⚡</span>Edge Scan</div>
         <div class="stage-step" id="stg-routing"><span class="s-icon">🔀</span>Select for Cloud</div>
         <div class="stage-step" id="stg-cloud"><span class="s-icon">☁️</span>Cloud Re-check</div>
         <div class="stage-step" id="stg-done"><span class="s-icon">✅</span>Done</div>
@@ -1229,7 +1237,7 @@ function renderMetrics(data) {
     ? {label:'Hybrid (Edge+Cloud)', acc:s.hybrid_accuracy, prec:s.hybrid_precision, rec:s.hybrid_recall, f1:s.hybrid_fscore}
     : {label:'Edge only',           acc:s.edge_accuracy,   prec:s.edge_precision,   rec:s.edge_recall,   f1:s.edge_fscore};
   const rows = [];
-  if (hasEdge)   rows.push(['Edge AI (Q-BAT)',    'tag-edge',   s.edge_accuracy,   s.edge_precision,   s.edge_recall,   s.edge_fscore]);
+  if (hasEdge)   rows.push(['Edge (Q-BAT)',    'tag-edge',   s.edge_accuracy,   s.edge_precision,   s.edge_recall,   s.edge_fscore]);
   if (hasHybrid) rows.push(['Hybrid (Edge+Cloud)','tag-hybrid', s.hybrid_accuracy, s.hybrid_precision, s.hybrid_recall, s.hybrid_fscore]);
   el.innerHTML = `
     <div class="kpi-row">
@@ -1271,7 +1279,7 @@ function renderSequences(data) {
       </div>
     </div>
     <div class="tl-row"><div class="tl-label">GROUND TRUTH</div><canvas class="tl-canvas" id="cvGT" height="36"></canvas></div>
-    ${data.edge_preds?.length?`<div class="tl-row"><div class="tl-label">EDGE AI PREDICTIONS</div><canvas class="tl-canvas" id="cvEdge" height="36"></canvas></div>`:''}
+    ${data.edge_preds?.length?`<div class="tl-row"><div class="tl-label">EDGE PREDICTIONS</div><canvas class="tl-canvas" id="cvEdge" height="36"></canvas></div>`:''}
     ${data.hybrid_preds?.length?`<div class="tl-row"><div class="tl-label">FINAL PREDICTIONS (Edge + Cloud)</div><canvas class="tl-canvas" id="cvHybrid" height="36"></canvas></div>`:''}
     <p style="font-size:11px;color:var(--muted);margin-top:8px">Green = normal, red = anomaly</p>`;
   setTimeout(redrawTimelines, 60);
@@ -1443,18 +1451,18 @@ function parseLiveLine(line) {
   /* ── Phase markers (pipeline-level stage transitions) ─────────── */
   if (/Phase 1.+Edge inference/i.test(line)) {
     if(LP.phase<1){LP.phase=1;setStage(1);setFlowStep('edge');}
-    setFriendlyStatus('⚡','Edge AI is preparing…','Loading log data and initialising all Q-BAT models.');
+    setFriendlyStatus('⚡','Edge is preparing…','Loading log data and initialising all Q-BAT models.');
     return;
   }
   if (/Phase 2.+Cloud inference/i.test(line)) {
     if(LP.phase<3){LP.phase=3;setStage(3);setFlowStep('cloud');}
     document.getElementById('opLine').textContent='Starting cloud inference…';
-    setFriendlyStatus('☁️','Cloud AI is doing a deep re-check…','The more powerful cloud model re-analyses the uncertain windows the edge flagged.');
+    setFriendlyStatus('☁️','Cloud is doing a deep re-check…','The more powerful cloud model re-analyses the uncertain windows the edge flagged.');
     return;
   }
   if (/Edge inference.*env: ceco-lad/i.test(line)) {
     if(LP.phase<1){LP.phase=1;setStage(1);setFlowStep('edge');}
-    setFriendlyStatus('⚡','Edge AI is preparing…','Loading log data and initialising all Q-BAT models.');
+    setFriendlyStatus('⚡','Edge is preparing…','Loading log data and initialising all Q-BAT models.');
     return;
   }
   if (/loading.*data|Stage 1|preprocessing/i.test(line) && LP.phase===0) {
@@ -1558,7 +1566,7 @@ function parseLiveLine(line) {
     renderLiveMetrics();
     const f1pct=(+metM[4]).toFixed(2);
     if(prefix==='Hybrid'){setFlowStep('result');setFriendlyStatus('✅',`Final result: ${f1pct}% F-score`,`Edge + Cloud achieved ${f1pct}% on anomaly detection.`);}
-    else{setFriendlyStatus('📊',`Edge AI: ${f1pct}% F-score`,'Edge scan complete. Cloud re-check may follow.');}
+    else{setFriendlyStatus('📊',`Edge: ${f1pct}% F-score`,'Edge scan complete. Cloud re-check may follow.');}
   }
 }
 
@@ -1779,9 +1787,9 @@ async function plLoadSessions(page) {
 let _rawPredictCtrl = null;
 
 const _PRED_STAGES = [
-  {id:'edge',    icon:'⚡', label:'Edge AI',  sub:'Q-BAT scan'},
+  {id:'edge',    icon:'⚡', label:'Edge',  sub:'Q-BAT scan'},
   {id:'routing', icon:'🔀', label:'Routing',  sub:'Uncertainty check'},
-  {id:'cloud',   icon:'☁️', label:'Cloud AI', sub:'BAT ensemble'},
+  {id:'cloud',   icon:'☁️', label:'Cloud', sub:'BAT ensemble'},
   {id:'result',  icon:'✅', label:'Result',   sub:'Prediction'},
 ];
 
@@ -1876,15 +1884,15 @@ async function selectRawLog(el) {
     ['stg-edge','stg-routing','stg-cloud','stg-done'].forEach(id => _setStgStage(id, ''));
   }
 
-  // ── Stage 1: Edge AI ──
+  // ── Stage 1: Edge ──
   _setPbStage('pb-edge', 'active');
   if (!S.running) {
     _setStgStage('stg-edge', 'active');
-    setFriendlyStatus('⚡', 'Edge AI scan', 'Scaling events and scoring with Q-BAT edge models.');
+    setFriendlyStatus('⚡', 'Edge scan', 'Scaling events and scoring with Q-BAT edge models.');
     document.getElementById('opLine').textContent = 'Edge scan: scaling events and scoring session…';
   }
   result.innerHTML = _predPipeHtml('edge') +
-    '<div style="color:var(--muted);font-size:11px;text-align:center">Edge AI scanning…</div>';
+    '<div style="color:var(--muted);font-size:11px;text-align:center">Edge scanning…</div>';
 
   await new Promise(r => setTimeout(r, 700));
 
@@ -1900,15 +1908,15 @@ async function selectRawLog(el) {
 
   await new Promise(r => setTimeout(r, 500));
 
-  // ── Stage 3: Cloud AI — fire API call now ──
+  // ── Stage 3: Cloud — fire API call now ──
   _setPbStage('pb-routing', 'done'); _setPbStage('pb-cloud', 'active');
   if (!S.running) {
     _setStgStage('stg-routing', 'done'); _setStgStage('stg-cloud', 'active');
-    setFriendlyStatus('☁️', 'Cloud AI analysis', 'BAT ensemble running deep re-analysis on the session.');
+    setFriendlyStatus('☁️', 'Cloud analysis', 'BAT ensemble running deep re-analysis on the session.');
     document.getElementById('opLine').textContent = 'Cloud: running BAT ensemble models…';
   }
   result.innerHTML = _predPipeHtml('cloud') +
-    '<div style="color:var(--muted);font-size:11px;text-align:center">Cloud AI analysing…</div>';
+    '<div style="color:var(--muted);font-size:11px;text-align:center">Cloud analysing…</div>';
 
   const url = `/api/predict/from-raw?dataset=${S.dataset}&split=${PL.split}`
             + `&line_number=${lineNum}&block_id=${encodeURIComponent(blockId)}`;
@@ -1932,6 +1940,8 @@ async function selectRawLog(el) {
       const lbl = d.prediction === 1 ? 'ANOMALY' : 'NORMAL';
       setFriendlyStatus('✅', 'Prediction complete',
         `L${lineNum} classified as ${lbl} · ${d.elapsed_s}s`);
+      document.getElementById('opLine').textContent =
+        `Done · L${lineNum} → ${lbl}`;
     }
     _renderRawPredictResult(d, lineNum, meta, badge, result);
 
@@ -1939,6 +1949,7 @@ async function selectRawLog(el) {
     if (e.name !== 'AbortError') {
       ['pb-edge','pb-routing','pb-cloud'].forEach(id => _setPbStage(id, ''));
       if (!S.running && liveCard) liveCard.style.display = 'none';
+      document.getElementById('opLine').textContent = '';
       result.innerHTML = `<div style="color:var(--red);font-size:11px">Error: ${esc(e.message)}</div>`;
     }
   }
@@ -2005,7 +2016,7 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
     <!-- Stage breakdown: Edge + Routing side by side -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
 
-      <!-- Edge AI -->
+      <!-- Edge -->
       <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
         <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:5px">⚡ Edge (Q-BAT)</div>
         <span class="pr-badge ${edgeIsAnom?'anom':'norm'}" style="font-size:12px;margin-bottom:4px;display:inline-block">${edgeIsAnom?'ANOMALY':'NORMAL'}</span>
@@ -2024,7 +2035,7 @@ function _renderRawPredictResult(d, lineNum, meta, badge, result) {
       </div>
     </div>
 
-    <!-- Cloud AI — full width with scrollable model list -->
+    <!-- Cloud — full width with scrollable model list -->
     <div style="border:1px solid var(--border);border-radius:7px;padding:8px">
       <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:5px">☁️ Cloud (BAT)</div>
       <span class="pr-badge ${cloudIsAnom?'anom':'norm'}" style="font-size:12px;margin-bottom:4px;display:inline-block">${cloudIsAnom?'ANOMALY':'NORMAL'}</span>
@@ -2100,17 +2111,17 @@ const TOUR_STEPS = [
     desc: 'Pick the system logs to analyse. <strong>BGL</strong>, <strong>HDFS</strong>, and <strong>OpenStack</strong> are all live in this demo.',
     target: '.ds-grid', pad: 10, pos: 'right' },
   { title: '② Start the Analysis',
-    desc: 'Click <strong style="color:#16a34a">▶ Start Analysis</strong> to run the full four-stage pipeline — Edge AI, Routing, and Cloud AI — end-to-end.',
+    desc: 'Click <strong style="color:#16a34a">▶ Start Full Test Set Analysis</strong> to run the test set through the pipeline — Edge, Routing, and Cloud — and see aggregate metrics (accuracy, precision, recall, F1).',
     target: '#runBtn', pad: 8, pos: 'right' },
   { title: '③ Watch the Pipeline Tab',
-    desc: 'Switch here to see raw log messages, parsed sessions, and live stage-by-stage progress as each AI stage completes.',
+    desc: 'Switch here to see raw log messages, parsed sessions, and live stage-by-stage progress.',
     target: '.tab[data-tab="pipeline"]', pad: 6, pos: 'bottom' },
   { title: '④ Explore Results',
-    desc: 'The <strong>Results</strong> tab shows the Anomaly Timeline — ground truth, Edge AI predictions, and final Edge + Cloud predictions side by side.',
+    desc: 'The <strong>Results</strong> tab shows the Anomaly Timeline — ground truth, Edge predictions, and final Edge + Cloud collaborative predictions side by side.',
     target: '.tab[data-tab="results"]', pad: 6, pos: 'bottom' },
   { title: '⑤ Predict a Single Log Line',
-    desc: 'In the <strong>Pipeline</strong> tab, click any raw log row to instantly run the full Edge → Routing → Cloud pipeline on just that one log. The verdict appears inline.',
-    target: '.tab[data-tab="pipeline"]', pad: 6, pos: 'bottom', isLast: true },
+    desc: 'Click <strong>any raw log row</strong> like this one to score it through the full Edge → Routing → Cloud pipeline. The model does <strong>not</strong> look at the single line alone — it uses that line\'s <strong>forward sequence</strong> (the 10 preceding events that form its context window) for evaluation. The 10-event context and the final verdict appear inline below the row.',
+    target: '#plRawBody .pl-row', fallback: '#plRawBody', pad: 6, pos: 'left', isLast: true },
 ];
 
 let _tourStep = -1; // -1 = intro card
@@ -2134,8 +2145,16 @@ function _renderTourStep() {
     return;
   }
   intro.classList.add('hidden');
+  // Always hide the floating context tooltip when (re)rendering a tour step,
+  // so a stale hover popup from before the tour started doesn't cover the bubble.
+  if (typeof _ctxHide === 'function') _ctxHide();
   const step = TOUR_STEPS[_tourStep];
-  const el   = document.querySelector(step.target);
+  // Ensure the Pipeline tab is active when a step targets something inside it
+  // (e.g. the raw-log row in step 5) — otherwise the target won't exist.
+  if (step.target && step.target.startsWith('#pl') && typeof switchTab === 'function') {
+    switchTab('pipeline');
+  }
+  const el = document.querySelector(step.target) || document.querySelector(step.fallback || '');
   if (!el) { tourNext(); return; }
   el.scrollIntoView({behavior:'smooth', block:'nearest'});
   const pad = step.pad || 6;
@@ -2198,6 +2217,7 @@ function closeTour() {
   document.getElementById('tourIntroOverlay').classList.add('hidden');
   document.getElementById('tourHighlight').classList.add('hidden');
   document.getElementById('tourTooltip').classList.add('hidden');
+  _tourStep = -1;   // reset so the context-window tooltip re-enables
 }
 function tourClickOutside(e) {
   if (e.target === document.getElementById('tourIntroOverlay')) closeTour();
@@ -2291,6 +2311,9 @@ function _ctxRender(data) {
 }
 
 async function _ctxShow(el, mouseX, mouseY) {
+  // Suppress the floating context tooltip while the guided tour is active —
+  // otherwise hovering rows during step ⑤ covers up the tour bubble.
+  if (typeof _tourStep !== 'undefined' && _tourStep >= 0) return;
   _ctxInit();
   const dataset    = S.dataset;
   const lineNumber = el.dataset.line;

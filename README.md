@@ -57,6 +57,10 @@ CECO-LAD/
 ├── checkpoints/               # Model weights — downloaded by start.py
 ├── outputs/                   # Inference results — generated at runtime
 │
+├── environment/               # Python dependency lists
+│   ├── cloud/requirements.txt   # Training, evaluation, cloud inference, dashboard
+│   └── edge/requirements.txt    # Extra packages for ExecuTorch edge inference
+│
 └── tools/
     ├── download_checkpoints.py  # Downloads BAT / Q-BAT checkpoints
     └── download_data.py         # Downloads ExecuTorch + raw logs
@@ -64,80 +68,74 @@ CECO-LAD/
 
 ---
 
-## Quick Start — Dashboard
-
-Try the **[live demo on Hugging Face Spaces](https://kismetzz-ceco-lad.hf.space/)** — no setup needed.
-
-For local use:
-
-```bash
-# 1. Clone
-git clone https://github.com/kiSmetZz28/CECO-LAD.git
-cd CECO-LAD
-
-# 2. Set up the environment
-conda create -yn ceco-lad python=3.10.0
-conda activate ceco-lad
-pip install torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cpu
-pip install -r environment/cloud/requirements.txt
-pip install -e .
-pip install gdown huggingface_hub
-
-# 3. Download assets and launch
-python start.py
-```
-
-Open **http://localhost:8765**. A built-in **? Help** button guides you through all features.
-
-> `start.py` automatically downloads all required assets on first run. On first launch the **Database** indicator shows **Loading** while log data is imported.
-
----
-
 ## Full Setup
 
-All commands run from the project root. Two Conda environments are needed:
+All commands run from the project root. CECO-LAD uses **two Conda environments**, one for each inference tier:
 
-| Environment | Purpose                                            |
-| ----------- | -------------------------------------------------- |
-| `ceco-lad`  | Dashboard, evaluation, edge inference (CPU)        |
-| `hybrid`    | Training (GPU recommended) and cloud BAT inference |
+| Environment | Tier      | Stack                                | What runs in it                                                                                                            |
+| ----------- | --------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `ceco-lad`  | **Edge**  | PyTorch 2.4 + ExecuTorch 0.5         | Dashboard, Q-BAT edge inference (`.pte` via ExecuTorch), pipeline orchestration. CPU is sufficient.                        |
+| `hybrid`    | **Cloud** | PyTorch 2.4 + CUDA 12.4              | BAT ensemble training (81 models) and cloud re-check inference. GPU strongly recommended; the inference pipeline launches this env as a subprocess. |
+
+**Why two environments?** Edge and cloud have different runtime needs. Edge uses ExecuTorch (compact, CPU-only, runs `.pte` quantized models), while cloud uses full-precision PyTorch with CUDA. Splitting them keeps each install minimal and avoids version conflicts between ExecuTorch and CUDA PyTorch.
 
 ### Step 1 — Set up environments
 
+#### Edge environment (`ceco-lad`) — required for the dashboard
+
 ```bash
-# ceco-lad (CPU — for dashboard and edge inference)
 conda create -yn ceco-lad python=3.10.0
 conda activate ceco-lad
-pip install torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cpu
-pip install -r environment/cloud/requirements.txt
-pip install -e .
-pip install gdown huggingface_hub
-
-# hybrid (GPU — for training and cloud inference)
-conda create -yn hybrid python=3.10.0
-conda activate hybrid
-pip install -r environment/cloud/requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+pip install -r environment/cloud/requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cu124
 pip install -e .
 ```
 
-> ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) is downloaded and its Python bindings installed automatically by `start.py` — no manual compilation needed. Linux/macOS only; Windows users: use WSL2.
+> The CUDA build of PyTorch is also used here — it works on CPU-only machines (no GPU acceleration, but the install succeeds and the dashboard runs fine).
 
-### Step 2 — Download pre-trained models
+ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) is downloaded and its Python bindings installed automatically by `start.py` — no manual compilation needed. **Linux/macOS only**; Windows users: use WSL2.
+
+#### Cloud environment (`hybrid`) — required for training and full inference
 
 ```bash
-# Download everything (ExecuTorch + Q-BAT + raw logs + BAT checkpoints for all datasets)
-python start.py --setup-only
+conda create -yn hybrid python=3.10.0
+conda activate hybrid
+pip install -r environment/cloud/requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cu124
+pip install -e .
+```
 
-# Download BAT checkpoints for a specific dataset only
+> The two environments install the same requirements file with the same index URL. They are kept separate so each can evolve independently (e.g. you can add GPU-only debug tools to `hybrid` without polluting `ceco-lad`).
+
+**Verify both environments exist:**
+```bash
+conda env list   # should list both 'ceco-lad' and 'hybrid'
+```
+
+### Step 2 — Download assets and launch the dashboard
+
+`start.py` downloads ExecuTorch, Q-BAT, raw logs, and BAT checkpoints (skipping any that already exist), then launches the dashboard at **http://localhost:8765**:
+
+```bash
+conda activate ceco-lad
+python start.py                # download everything + launch dashboard
+python start.py --setup-only   # download only, do not launch
+python start.py --no-bat       # skip BAT checkpoints (~3.5 GB × dataset)
+python start.py --status       # show what is present / missing, then exit
+```
+
+A built-in **? Help** button in the dashboard guides you through all features. On first launch the **Database** indicator shows **Loading** while log data is imported.
+
+To download checkpoints for a specific dataset without launching the dashboard:
+
+```bash
 python tools/download_checkpoints.py --dataset bgl    # BGL only
 python tools/download_checkpoints.py --dataset hdfs   # HDFS only
 python tools/download_checkpoints.py --dataset os     # OpenStack only
-
-# Download Q-BAT edge models only (~220 MB total, no BAT needed for edge-only inference)
-python tools/download_checkpoints.py --type qbat
+python tools/download_checkpoints.py --type qbat      # Q-BAT edge models only (~220 MB)
 ```
 
-### Step 3 — Run inference
+### Step 3 — Run inference from the CLI
 
 Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction.
 
