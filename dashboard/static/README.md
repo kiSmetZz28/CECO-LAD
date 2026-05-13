@@ -11,5 +11,5 @@ GitHub's 100 MB file size limit.
 The video plays via the **"Watch Demo"** button on the dashboard.
 
 > If you are deploying your own instance, place your `demo.mp4` here
-> (`dashboard/static/demo.mp4`) before running `python deploy_hf.py`.
+> (`dashboard/static/demo.mp4`) before running `python tools/deploy/deploy_hf.py`.
 > The file is picked up automatically — no code changes needed.

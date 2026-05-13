@@ -18,9 +18,13 @@ edge/
 tests/
 environment/
 
-# ── tools/ — only download_checkpoints.py is included (explicit COPY) ─────────
+# ── tools/ — only the two files explicitly COPY'd into the image are kept ────
+# (download_checkpoints.py: helper invoked at runtime;
+#  deploy/spaces_startup.py: the container entrypoint set via CMD)
 tools/
 !tools/download_checkpoints.py
+!tools/deploy/
+!tools/deploy/spaces_startup.py
 
 # ── Runtime artefacts ────────────────────────────────────────────────────────
 logs/

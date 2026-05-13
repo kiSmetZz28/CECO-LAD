@@ -36,7 +36,7 @@ COPY inference_pipeline/edge_agent.py    /app/inference_pipeline/edge_agent.py
 COPY inference_pipeline/run.py           /app/inference_pipeline/run.py
 COPY inference_pipeline/evaluate.py      /app/inference_pipeline/evaluate.py
 
-# Create the directory for executor_runner (downloaded at first launch by spaces_startup.py)
+# Create the directory for executor_runner (downloaded at first launch by tools/deploy/spaces_startup.py)
 RUN mkdir -p /app/inference_pipeline/executorch/cmake-out
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -54,12 +54,12 @@ COPY outputs/  /app/outputs/
 COPY data/     /app/data/
 COPY configs/  /app/configs/
 
-# ── Q-BAT checkpoints downloaded at container startup by spaces_startup.py ────
+# ── Q-BAT checkpoints downloaded at container startup by tools/deploy/spaces_startup.py ────
 # (not bundled in the image — kept in HF assets repo to stay under 1 GB limit)
 
 # ── Download helper + startup (fetches Q-BAT + BAT checkpoints at first launch) ─
-COPY tools/download_checkpoints.py /app/tools/download_checkpoints.py
-COPY spaces_startup.py             /app/spaces_startup.py
+COPY tools/download_checkpoints.py        /app/tools/download_checkpoints.py
+COPY tools/deploy/spaces_startup.py       /app/tools/deploy/spaces_startup.py
 
 # ── Environment ───────────────────────────────────────────────────────────────
 ENV EDGE_PYTHON=/usr/local/bin/python
@@ -69,4 +69,4 @@ ENV PORT=7860
 
 EXPOSE 7860
 
-CMD ["python", "spaces_startup.py"]
+CMD ["python", "tools/deploy/spaces_startup.py"]
