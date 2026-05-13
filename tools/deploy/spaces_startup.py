@@ -16,7 +16,7 @@ Assets repo: kiSmetZz/ceco-lad-assets  (dataset, public)
   (HDFS processed data files are bundled in the repo)
 
 Usage (set automatically via Dockerfile CMD):
-    python spaces_startup.py
+    python tools/deploy/spaces_startup.py
 """
 import os
 import subprocess
@@ -24,7 +24,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).parent
+# This file lives in tools/deploy/, so the project root is two levels up.
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 # HF dataset repo that holds all large assets
 HF_ASSETS_REPO = "kiSmetZz/ceco-lad-assets"

@@ -4,9 +4,9 @@
 This replaces Google Drive as the download source for HF Spaces startup.
 Run this once locally whenever assets change.
 
-Usage:
-    python upload_assets.py
-    python upload_assets.py --repo kiSmetZz/ceco-lad-assets   # custom repo name
+Run from the project root:
+    python tools/deploy/upload_assets.py
+    python tools/deploy/upload_assets.py --repo kiSmetZz/ceco-lad-assets   # custom repo name
 """
 import argparse
 import subprocess
@@ -21,7 +21,8 @@ except ImportError:
                     "huggingface_hub>=0.20"], check=True)
     from huggingface_hub import HfApi, login
 
-ROOT = Path(__file__).parent
+# This file lives in tools/deploy/, so the project root is two levels up.
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 LOG_DATA_ROOT     = Path.home() / "Desktop" / "Log Data"
 OPENSTACK_LOG_DIR = LOG_DATA_ROOT / "OpenStack"

@@ -4,9 +4,9 @@
 Uses HfApi.upload_folder() — no git, no git-lfs, no password needed.
 Authentication is done with an access token (Write permission).
 
-Usage:
-    python deploy_hf.py kiSmetZz
-    python deploy_hf.py kiSmetZz ceco-lad   # custom space name
+Run from the project root:
+    python tools/deploy/deploy_hf.py kiSmetZz
+    python tools/deploy/deploy_hf.py kiSmetZz ceco-lad   # custom space name
 """
 import sys
 from pathlib import Path
@@ -21,14 +21,15 @@ except ImportError:
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 if len(sys.argv) < 2:
-    print("Usage: python deploy_hf.py <hf-username> [space-name]")
-    print("Example: python deploy_hf.py kiSmetZz")
+    print("Usage: python tools/deploy/deploy_hf.py <hf-username> [space-name]")
+    print("Example: python tools/deploy/deploy_hf.py kiSmetZz")
     sys.exit(1)
 
 hf_user    = sys.argv[1]
 space_name = sys.argv[2] if len(sys.argv) > 2 else "ceco-lad"
 repo_id    = f"{hf_user}/{space_name}"
-root       = Path(__file__).parent
+# This file lives in tools/deploy/, so the project root is two levels up.
+root       = Path(__file__).resolve().parent.parent.parent
 
 print(f"\nDeploying CECO-LAD  →  {repo_id}")
 print(f"Public URL after build:  https://{hf_user}-{space_name}.hf.space\n")
@@ -61,7 +62,7 @@ print("  Uploading: code + data + outputs (~86 MB, well under 1 GB Space limit)"
 print("  No git-lfs needed — large files are chunked automatically.\n")
 
 # executor_runner is NOT uploaded here — it is downloaded at container startup
-# by spaces_startup.py using gdown (same mechanism as BAT checkpoints).
+# by tools/deploy/spaces_startup.py using gdown (same mechanism as BAT checkpoints).
 # This avoids the timing issue where upload_folder triggers HF's auto-build
 # before a separately uploaded binary can arrive.
 HF_README = f"""\
@@ -100,7 +101,7 @@ api.upload_folder(
         "dashboard/ceco_lad.db",
         # All output npy arrays are excluded from the Space repo to stay within
         # the 1 GB limit. They are all downloaded at container startup from the
-        # HF assets dataset repo via spaces_startup.py.
+        # HF assets dataset repo via tools/deploy/spaces_startup.py.
         "outputs/**/*.npy",
         # Dev / CI artefacts
         ".git/**",
