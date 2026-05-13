@@ -68,43 +68,30 @@ CECO-LAD/
 │   ├── routing.py                 #    Mahalanobis routing (uncertain → cloud)
 │   ├── cloud_expert.py            #    Full BAT ensemble re-prediction
 │   ├── run.py                     #    Orchestrator (spawns cloud env as subprocess)
-│   └── executorch/                #    Pre-built ExecuTorch 0.5.0 runtime (downloaded)
+│   └── executorch/                #    Pre-built ExecuTorch runtime
 │
-├── dashboard/                     # 4. FastAPI backend + single-page web UI
-│   ├── app.py                     #    REST API, SSE log stream, in-RAM BAT cache
-│   ├── index.html                 #    Vanilla JS + Chart.js front-end
-│   ├── db.py + ingest.py          #    SQLite ingestion / queries for raw logs
-│   ├── cloud_runner.py            #    Cloud-env subprocess (called from edge env)
-│   ├── demo_runner.py             #    All-Python pipeline used inside the container
-│   └── bat_predict.py             #    Single-session BAT scorer
+├── dashboard/                     # 4. Web UI: run the pipeline, browse results, predict on single sessions
 │
 │ ── Configuration & data ─────────────────────────────────────────────────
 ├── configs/
 │   ├── training/{bgl,hdfs,os}.yaml
 │   └── inference/{bgl,hdfs,os}.yaml
 │
-├── data/                          # Pre-processed event sequences (in repo)
-├── checkpoints/                   # bat/*.pth + qbat/*.pte (downloaded by start.py)
-├── outputs/                       # Predictions, energy matrices, thresholds (runtime)
-├── logs/                          # Training & inference log files (runtime)
-├── tests/                         # Pytest unit tests
+├── data/                          # Pre-processed event sequences
+├── outputs/                       # Thresholds, predictions
+├── checkpoints/                   # bat/*.pth + qbat/*.pte — downloaded by start.py
+├── logs/                          # Training & inference logs
 │
 ├── environment/                   # Python dependency lists
 │   ├── cloud/requirements.txt     #   Training, eval, cloud inference, dashboard
-│   └── edge/requirements.txt      #   Extra packages for ExecuTorch edge inference
+│   └── edge/requirements.txt      #   ExecuTorch edge inference
 │
 │ ── Tooling ──────────────────────────────────────────────────────────────
 └── tools/
     ├── download_checkpoints.py    # Fetch BAT / Q-BAT checkpoints
     ├── download_data.py           # Fetch ExecuTorch runtime + raw logs
     └── deploy/                    # Maintainer-only — Hugging Face Space deployment
-        ├── deploy_hf.py           #   Push repo to a HF Space
-        ├── upload_assets.py       #   Upload large assets to HF dataset repo
-        └── spaces_startup.py      #   Container entrypoint (run by Dockerfile CMD)
 ```
-
-> **Local users only need:** `start.py`, `run.py`, and the dashboard.
-> `tools/deploy/` and the top-level `Dockerfile` are for publishing the live demo to Hugging Face Spaces — they don't affect local runs.
 
 ---
 
@@ -112,45 +99,43 @@ CECO-LAD/
 
 All commands run from the project root. CECO-LAD uses **two Conda environments**, one for each inference tier:
 
-| Environment | Tier      | Stack                        | What runs in it                                                                                                                                     |
-| ----------- | --------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ceco-lad`  | **Edge**  | PyTorch 2.4 + ExecuTorch 0.5 | Dashboard, Q-BAT edge inference (`.pte` via ExecuTorch), pipeline orchestration. CPU is sufficient.                                                 |
-| `hybrid`    | **Cloud** | PyTorch 2.4 + CUDA 12.4      | BAT ensemble training (81 models) and cloud re-check inference. GPU strongly recommended; the inference pipeline launches this env as a subprocess. |
+| Environment      | Tier      | Stack                              | What runs in it                                                                                                                                     |
+| ---------------- | --------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ceco-lad-edge`  | **Edge**  | PyTorch 2.6 (CPU) + ExecuTorch 0.5 | Dashboard, Q-BAT edge inference (`.pte` via ExecuTorch), pipeline orchestration. CPU is sufficient.                                                 |
+| `ceco-lad-cloud` | **Cloud** | PyTorch 2.4 + CUDA 12.4            | BAT ensemble training (81 models) and cloud re-check inference. GPU strongly recommended; the inference pipeline launches this env as a subprocess. |
 
 **Why two environments?** Edge and cloud have different runtime needs. Edge uses ExecuTorch (compact, CPU-only, runs `.pte` quantized models), while cloud uses full-precision PyTorch with CUDA. Splitting them keeps each install minimal and avoids version conflicts between ExecuTorch and CUDA PyTorch.
 
 ### Step 1 — Set up environments
 
-#### Edge environment (`ceco-lad`) — required for the dashboard
+#### Edge environment (`ceco-lad-edge`)
 
 ```bash
-conda create -yn ceco-lad python=3.10.0
-conda activate ceco-lad
+conda create -yn ceco-lad-edge python=3.10.0
+conda activate ceco-lad-edge
+pip install -r environment/edge/requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+```
+
+ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) and its bundled `torchao` build are downloaded and installed automatically by `start.py` — no manual compilation needed (they carry PEP 440 local version labels and are not on PyPI, hence commented out in `requirements.txt`). **Linux/macOS only**; Windows users: use WSL2.
+
+#### Cloud environment (`ceco-lad-cloud`)
+
+```bash
+conda create -yn ceco-lad-cloud python=3.10.0
+conda activate ceco-lad-cloud
 pip install -r environment/cloud/requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cu124
 pip install -e .
 ```
 
-> The CUDA build of PyTorch is also used here — it works on CPU-only machines (no GPU acceleration, but the install succeeds and the dashboard runs fine).
-
-ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) is downloaded and its Python bindings installed automatically by `start.py` — no manual compilation needed. **Linux/macOS only**; Windows users: use WSL2.
-
-#### Cloud environment (`hybrid`) — required for training and full inference
-
-```bash
-conda create -yn hybrid python=3.10.0
-conda activate hybrid
-pip install -r environment/cloud/requirements.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu124
-pip install -e .
-```
-
-> The two environments install the same requirements file with the same index URL. They are kept separate so each can evolve independently (e.g. you can add GPU-only debug tools to `hybrid` without polluting `ceco-lad`).
+> Edge and cloud install **different** requirements files and PyTorch builds (CPU vs CUDA), so they must be separate envs. The inference pipeline also relies on this split: edge orchestrates and spawns cloud inference as a subprocess pointed at the cloud env's interpreter.
 
 **Verify both environments exist:**
 
 ```bash
-conda env list   # should list both 'ceco-lad' and 'hybrid'
+conda env list   # should list both 'ceco-lad-edge' and 'ceco-lad-cloud'
 ```
 
 ### Step 2 — Download assets and launch the dashboard
@@ -158,7 +143,7 @@ conda env list   # should list both 'ceco-lad' and 'hybrid'
 `start.py` downloads ExecuTorch, Q-BAT, raw logs, and BAT checkpoints (skipping any that already exist), then launches the dashboard at **http://localhost:8765**:
 
 ```bash
-conda activate ceco-lad
+conda activate ceco-lad-edge
 python start.py                # download everything + launch dashboard
 python start.py --setup-only   # download only, do not launch
 python start.py --no-bat       # skip BAT checkpoints (~3.5 GB × dataset)
@@ -181,7 +166,7 @@ python tools/download_checkpoints.py --type qbat      # Q-BAT edge models only (
 Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction.
 
 ```bash
-conda activate ceco-lad
+conda activate ceco-lad-edge
 python run.py infer os
 python run.py infer bgl
 python run.py infer hdfs
@@ -195,18 +180,18 @@ python run.py infer hdfs
 
 ```bash
 # Edge inference only (no cloud re-check)
-conda activate ceco-lad
+conda activate ceco-lad-edge
 python -m inference_pipeline.run --config configs/inference/os.yaml --edge-only
 
 # Cloud re-check only (requires edge outputs to already exist)
-conda activate hybrid
+conda activate ceco-lad-cloud
 python dashboard/cloud_runner.py --config configs/inference/os.yaml
 ```
 
 ### Train from scratch
 
 ```bash
-conda activate hybrid
+conda activate ceco-lad-cloud
 python run.py train os
 python run.py train bgl
 python run.py train hdfs
@@ -215,7 +200,7 @@ python run.py train hdfs
 Runs a hyperparameter sweep — 81 models per dataset. Then regenerate thresholds:
 
 ```bash
-conda activate ceco-lad
+conda activate ceco-lad-edge
 python run.py eval os
 python run.py eval bgl
 python run.py eval hdfs
@@ -224,7 +209,7 @@ python run.py eval hdfs
 ### Convert to edge models
 
 ```bash
-conda activate ceco-lad
+conda activate ceco-lad-edge
 python run.py convert os
 python run.py convert bgl
 python run.py convert hdfs
