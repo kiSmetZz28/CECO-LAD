@@ -70,7 +70,7 @@ CECO-LAD/
 │   ├── run.py                     #    Orchestrator (spawns cloud env as subprocess)
 │   └── executorch/                #    Pre-built ExecuTorch runtime
 │
-├── dashboard/                     # 4. Web UI: run the pipeline, browse results, predict on single sessions
+├── dashboard/                     # 4. Front-end UI for visualization
 │
 │ ── Configuration & data ─────────────────────────────────────────────────
 ├── configs/
