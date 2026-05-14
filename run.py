@@ -33,6 +33,11 @@ def _run(*args: str) -> None:
     sys.exit(result.returncode)
 
 
+def _run_keep_going(*args: str) -> int:
+    """Like _run, but returns the exit code instead of exiting the process."""
+    return subprocess.run([_PY, *args], cwd=str(_ROOT)).returncode
+
+
 def _run_module(module: str, *args: str) -> None:
     _run("-m", module, *args)
 
@@ -50,7 +55,21 @@ def main() -> None:
         if ckpt_type:
             extra += ["--type", ckpt_type]
         print(f"[run] Downloading checkpoints — dataset: {dataset or 'all'}  type: {ckpt_type or 'both'}")
-        _run(str(_ROOT / "tools" / "download_checkpoints.py"), *extra)
+        rc = _run_keep_going(str(_ROOT / "tools" / "download_checkpoints.py"), *extra)
+        if rc != 0:
+            sys.exit(rc)
+
+        # `.pte` files are useless without the ExecuTorch runtime, so when
+        # qbat checkpoints are in the download set, also fetch and install
+        # the runtime so that subsequent `run.py infer` / `run.py convert`
+        # have everything they need.
+        if ckpt_type != "bat":
+            print("[run] Ensuring ExecuTorch runtime is installed (needed for infer / convert) …")
+            sys.path.insert(0, str(_ROOT))
+            from launch_dashboard import setup_executorch
+            ok = setup_executorch()
+            sys.exit(0 if ok else 1)
+        sys.exit(0)
 
     elif command == "train":
         dataset = argv[1] if len(argv) > 1 else "bgl"

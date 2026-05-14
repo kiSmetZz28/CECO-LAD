@@ -6,10 +6,10 @@ Safe to run multiple times — skips files that are already present.
 
 Usage
 -----
-  python start.py                # download everything + launch dashboard
-  python start.py --no-bat       # skip BAT checkpoints (3.5 GB each) + launch
-  python start.py --setup-only   # download only, do not launch dashboard
-  python start.py --status       # show what is present / missing, then exit
+  python launch_dashboard.py                # download everything + launch dashboard
+  python launch_dashboard.py --no-bat       # skip BAT checkpoints (3.5 GB each) + launch
+  python launch_dashboard.py --setup-only   # download only, do not launch dashboard
+  python launch_dashboard.py --status       # show what is present / missing, then exit
 
 Assets downloaded
 -----------------
@@ -345,7 +345,7 @@ def main() -> None:
     show_status()
 
     if args.setup_only:
-        print("Setup complete. Run  python start.py  to launch the dashboard.")
+        print("Setup complete. Run  python launch_dashboard.py  to launch the dashboard.")
         return
 
     print("Launching dashboard at http://localhost:8765 …\n")

@@ -50,14 +50,14 @@ System logs are first generated from diverse servers and applications and collec
 
 ## Repository Structure
 
-Two entry points cover the typical local workflow: `start.py` for one-command setup + dashboard, and `run.py` to run individual pipeline stages. Everything else falls into one of three groups — **shared library**, **pipeline stages**, or **supporting assets**.
+`run.py` is the primary entry point — a single CLI that dispatches every pipeline stage (download, train, eval, convert, infer). `launch_dashboard.py` is an optional local helper that bundles asset download with launching the web UI. Everything else falls into one of three groups — **shared library**, **pipeline stages**, or **supporting assets**.
 
 ```
 CECO-LAD/
 │
 │ ── Entry points (run from project root) ─────────────────────────────────
-├── start.py                       # Download missing assets + launch dashboard
-├── run.py                         # CLI: train | eval | convert | infer | download
+├── run.py                         # Main CLI: download | train | eval | convert | infer
+├── launch_dashboard.py            # Optional local helper: fetch assets + start the web UI
 │
 │ ── Shared library ───────────────────────────────────────────────────────
 ├── ceco_core/                     # Imported by every pipeline below
@@ -90,7 +90,7 @@ CECO-LAD/
 │
 ├── data/                          # Pre-processed event sequences
 ├── outputs/                       # Thresholds, predictions
-├── checkpoints/                   # bat/*.pth + qbat/*.pte — downloaded by start.py
+├── checkpoints/                   # bat/*.pth + qbat/*.pte — fetched by `run.py download`
 ├── logs/                          # Training & inference logs
 │
 ├── environment/                   # Python dependency lists
@@ -129,7 +129,7 @@ pip install -r environment/edge/requirements.txt \
 pip install -e .
 ```
 
-ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) and its bundled `torchao` build are downloaded and installed automatically by `start.py` — no manual compilation needed (they carry PEP 440 local version labels and are not on PyPI, hence commented out in `requirements.txt`). **Linux/macOS only**; Windows users: use WSL2.
+ExecuTorch **0.5.0** ([docs](https://docs.pytorch.org/executorch/0.5/)) and its bundled `torchao` build are downloaded and installed automatically in Step 2 below (or by `launch_dashboard.py`) — no manual compilation needed (they carry PEP 440 local version labels and are not on PyPI, hence commented out in `requirements.txt`). **Linux/macOS only**; Windows users: use WSL2.
 
 #### Cloud environment (`ceco-lad-cloud`)
 
@@ -149,39 +149,46 @@ pip install -e .
 conda env list   # should list both 'ceco-lad-edge' and 'ceco-lad-cloud'
 ```
 
-### Step 2 — Download assets and launch the dashboard
+### Step 2 — Download checkpoints and the edge runtime
 
-`start.py` downloads ExecuTorch, Q-BAT, raw logs, and BAT checkpoints (skipping any that already exist), then launches the dashboard at **http://localhost:8765**:
-
-```bash
-conda activate ceco-lad-edge
-python start.py                # download everything + launch dashboard
-python start.py --setup-only   # download only, do not launch
-python start.py --no-bat       # skip BAT checkpoints (~3.5 GB × dataset)
-python start.py --status       # show what is present / missing, then exit
-```
-
-A built-in **? Help** button in the dashboard guides you through all features. On first launch the **Database** indicator shows **Loading** while log data is imported.
-
-To download checkpoints for a specific dataset without launching the dashboard:
-
-```bash
-python tools/download_checkpoints.py --dataset bgl    # BGL only
-python tools/download_checkpoints.py --dataset hdfs   # HDFS only
-python tools/download_checkpoints.py --dataset os     # OpenStack only
-python tools/download_checkpoints.py --type qbat      # Q-BAT edge models only (~220 MB)
-```
-
-### Step 3 — Run inference from the CLI
-
-Pre-computed thresholds for all three datasets are included in the repository. Runs the full pipeline: edge scan → routing → cloud re-check → final prediction.
+`run.py` is the project's main entry point. Use `run.py download` to fetch the BAT (`.pth`) and Q-BAT (`.pte`) checkpoints required by the inference pipeline. Whenever Q-BAT checkpoints are part of the download, `run.py` _also_ installs the **ExecuTorch 0.5.0 runtime** (and its bundled `torchao` build) — these are required by `run.py infer` (edge stage) and `run.py convert`.
 
 ```bash
 conda activate ceco-lad-edge
-python run.py infer os
+python run.py download                # all datasets, both checkpoint types + ExecuTorch runtime
+python run.py download bgl            # one dataset (BAT + Q-BAT) + ExecuTorch runtime
+python run.py download bgl bat        # BGL full-precision only (no ExecuTorch needed)
+python run.py download bgl qbat       # BGL quantized Q-BAT + ExecuTorch runtime
+```
+
+> **Note:** raw log files are _not_ fetched here — they are only needed for the optional web dashboard's log-browsing panels and are downloaded by `launch_dashboard.py` (see "Optional — Launch the local dashboard" below).
+
+### Step 3 — Run the full pipeline from the CLI
+
+`run.py` dispatches every pipeline stage. Pre-computed thresholds for all three datasets are bundled with the repository, so you can run inference immediately:
+
+```bash
+conda activate ceco-lad-edge
+python run.py infer os                # edge scan → routing → cloud re-check → final prediction
 python run.py infer bgl
 python run.py infer hdfs
 ```
+
+For other stages — `train`, `eval`, `convert` — see [Advanced Options](#advanced-options).
+
+### Optional — Launch the local dashboard
+
+`launch_dashboard.py` wraps the inference pipeline in a web UI at **http://localhost:8765**. Unlike `run.py download`, it also fetches the ExecuTorch CPU runtime and the raw log files needed for the dashboard's log-browsing panels:
+
+```bash
+conda activate ceco-lad-edge
+python launch_dashboard.py                # full setup (ExecuTorch + Q-BAT + raw logs + BAT) + launch UI
+python launch_dashboard.py --setup-only   # download assets, do not launch
+python launch_dashboard.py --no-bat       # skip BAT checkpoints (~3.5 GB × dataset)
+python launch_dashboard.py --status       # show what is present / missing, then exit
+```
+
+A built-in **? Help** button in the dashboard guides you through all features. On first launch the **Database** indicator shows **Loading** while log data is imported.
 
 ---
 
@@ -226,7 +233,7 @@ python run.py convert bgl
 python run.py convert hdfs
 ```
 
-Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset}/`. Skip if you downloaded Q-BAT checkpoints in Step 2.
+Applies A8W4 quantization and exports `.pte` files to `checkpoints/qbat/{dataset}/`. Skip if you already downloaded Q-BAT checkpoints via `python run.py download <dataset> qbat`.
 
 ---
 
