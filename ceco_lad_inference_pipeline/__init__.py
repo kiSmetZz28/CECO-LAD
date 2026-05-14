@@ -1,12 +1,12 @@
 """Inference pipeline — collaborative edge+cloud anomaly detection.
 
 Q-BAT (edge) and BAT (cloud) run in separate environments and are
-orchestrated by inference_pipeline.run.  Thresholds must be pre-computed
+orchestrated by ceco_lad_inference_pipeline.run.  Thresholds must be pre-computed
 by the training/evaluation pipeline before inference is started.
 
 Entry point (run from project root)
 -------------------------------------
-python -m inference_pipeline.run --config configs/inference/bgl.yaml
+python -m ceco_lad_inference_pipeline.run --config configs/inference/bgl.yaml
 
 Or via run.sh:
   bash run.sh infer bgl

@@ -93,7 +93,7 @@ def main() -> None:
     elif command == "infer":
         dataset = argv[1] if len(argv) > 1 else "bgl"
         print(f"[run] Inference pipeline — dataset: {dataset}")
-        _run_module("inference_pipeline.run",
+        _run_module("ceco_lad_inference_pipeline.run",
                     "--config", f"configs/inference/{dataset}.yaml")
 
     elif command in ("help", "--help", "-h"):

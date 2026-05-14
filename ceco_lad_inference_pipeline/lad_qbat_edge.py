@@ -27,7 +27,7 @@ _RUNNER_AVAILABLE = _RUNNER_BIN.is_file() and (os.name == "nt" or os.access(str(
 
 
 class EdgeResult(NamedTuple):
-    """Output of qbat_edge.run()."""
+    """Output of lad_qbat_edge.run()."""
     predictions: np.ndarray
     ground_truth: np.ndarray
     energy_matrix: np.ndarray
@@ -122,7 +122,7 @@ def _write_windows_csv(windows: np.ndarray, path: str) -> None:
             f.write(f'{v:.6f}\n')
 
 
-# CWD for the executor_runner — must be inference_pipeline/executorch/
+# CWD for the executor_runner — must be ceco_lad_inference_pipeline/executorch/
 _EXECUTORCH_DIR = Path(_RUNNER_BIN).parent.parent
 
 

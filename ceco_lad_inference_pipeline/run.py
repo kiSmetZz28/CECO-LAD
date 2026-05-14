@@ -29,10 +29,10 @@ import numpy as np
 from ceco_core.utils.config import load_config, setup_logging
 from ceco_core.utils.io import mkdir
 from ceco_core.utils.metrics import evaluate
-from inference_pipeline import qbat_edge
-from inference_pipeline.routing import compute_inv_cov, select_indices_by_distance
+from ceco_lad_inference_pipeline import lad_qbat_edge
+from ceco_lad_inference_pipeline.routing import compute_inv_cov, select_indices_by_distance
 
-# bat_cloud is NOT imported here — BAT models always run in the ceco-lad-cloud env.
+# lad_bat_cloud is NOT imported here — BAT models always run in the ceco-lad-cloud env.
 
 
 def _detect_cloud_python() -> str:
@@ -93,7 +93,7 @@ def run_inference(inference_config_path: str) -> None:
 
     # ── Stage 1: Edge Q-BAT inference ─────────────────────────────────────
     logging.info("=== Stage 1: Edge Q-BAT Inference ===")
-    result = qbat_edge.run(cfg)
+    result = lad_qbat_edge.run(cfg)
 
     edge_preds_adj = _point_adjust(result.ground_truth, result.predictions)
     np.save(os.path.join(out_base, 'edge_preds.npy'),     edge_preds_adj)

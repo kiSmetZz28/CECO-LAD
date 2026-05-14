@@ -1,7 +1,7 @@
 """Download assets needed to run CECO-LAD locally after cloning from GitHub.
 
 Downloads:
-  executorch.zip  → inference_pipeline/executorch/   (~1.4 GB, Google Drive)
+  executorch.zip  → ceco_lad_inference_pipeline/executorch/   (~1.4 GB, Google Drive)
   bgl_raw.zip     → $CECO_LOG_ROOT/BGL/split/        (~700 MB, HF assets)
   hdfs_split.zip  → $CECO_LOG_ROOT/                  (~1.6 GB, HF assets)
 
@@ -24,7 +24,7 @@ from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 _PROJECT_ROOT  = Path(__file__).resolve().parent.parent
-EXECUTORCH_DIR = _PROJECT_ROOT / "inference_pipeline" / "executorch"
+EXECUTORCH_DIR = _PROJECT_ROOT / "ceco_lad_inference_pipeline" / "executorch"
 
 LOG_ROOT       = Path(os.environ.get("CECO_LOG_ROOT", Path.home() / "Desktop" / "Log Data"))
 BGL_SPLIT_DIR  = LOG_ROOT / "BGL" / "split"
@@ -117,10 +117,10 @@ def download_executorch() -> bool:
         return True
     print("Downloading ExecuTorch (~1.4 GB) from Google Drive …")
     _check_gdown()
-    zip_path = _PROJECT_ROOT / "inference_pipeline" / "executorch.zip"
+    zip_path = _PROJECT_ROOT / "ceco_lad_inference_pipeline" / "executorch.zip"
     if not _gdrive_download(EXECUTORCH_GDRIVE, zip_path):
         return False
-    _extract_zip(zip_path, _PROJECT_ROOT / "inference_pipeline")
+    _extract_zip(zip_path, _PROJECT_ROOT / "ceco_lad_inference_pipeline")
     if EXECUTORCH_MARKER.exists():
         print("ExecuTorch ready.")
         return True

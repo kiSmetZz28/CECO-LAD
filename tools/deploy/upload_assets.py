@@ -41,7 +41,7 @@ BAT_OS_DIR    = ROOT / "checkpoints" / "bat" / "os"
 BAT_BGL_DIR   = ROOT / "checkpoints" / "bat" / "bgl"
 BAT_HDFS_DIR  = ROOT / "checkpoints" / "bat" / "hdfs"
 QBAT_DIR      = ROOT / "checkpoints" / "qbat"
-RUNNER_PATH   = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+RUNNER_PATH   = ROOT / "ceco_lad_inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 DEMO_VIDEO    = ROOT / "dashboard" / "static" / "demo.mp4"
 
 # ── Pre-computed inference outputs (npy arrays) ───────────────────────────────

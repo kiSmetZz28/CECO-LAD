@@ -35,16 +35,16 @@ System logs are first generated from diverse servers and applications and collec
 
 ### Paper ↔ Code Mapping
 
-| Paper component                                            | Code location                                                                                                  |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Log preprocessing (raw logs → feature matrix)              | [ceco_core/data/](ceco_core/data/)                                                                             |
-| Enhanced Anomaly Transformer (EM-AT) base learner          | [ceco_core/models/](ceco_core/models/)                                                                         |
-| BAT — cloud bagging ensemble (training)                    | [training_pipeline/](training_pipeline/)                                                                       |
-| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/qbat_export.py](quantization/qbat_export.py)                                                     |
-| Q-BAT edge inference                                       | [inference_pipeline/qbat_edge.py](inference_pipeline/qbat_edge.py)                                             |
-| Mahalanobis distance-based routing policy                  | [inference_pipeline/routing.py](inference_pipeline/routing.py)                                                 |
-| BAT cloud re-prediction on routed samples                  | [inference_pipeline/bat_cloud.py](inference_pipeline/bat_cloud.py)                                             |
-| Cloud–edge collaborative orchestration                     | [inference_pipeline/run.py](inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
+| Paper component                                            | Code location                                                                                                                    |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Log preprocessing (raw logs → feature matrix)              | [ceco_core/data/](ceco_core/data/)                                                                                               |
+| Enhanced Anomaly Transformer (EM-AT) base learner          | [ceco_core/models/](ceco_core/models/)                                                                                           |
+| BAT — cloud bagging ensemble (training)                    | [training_pipeline/](training_pipeline/)                                                                                         |
+| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/qbat_export.py](quantization/qbat_export.py)                                                                       |
+| Q-BAT edge inference                                       | [ceco_lad_inference_pipeline/lad_qbat_edge.py](ceco_lad_inference_pipeline/lad_qbat_edge.py)                                     |
+| Mahalanobis distance-based routing policy                  | [ceco_lad_inference_pipeline/routing.py](ceco_lad_inference_pipeline/routing.py)                                                 |
+| BAT cloud re-prediction on routed samples                  | [ceco_lad_inference_pipeline/lad_bat_cloud.py](ceco_lad_inference_pipeline/lad_bat_cloud.py)                                     |
+| Cloud–edge collaborative orchestration                     | [ceco_lad_inference_pipeline/run.py](ceco_lad_inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
 
 ---
 
@@ -52,7 +52,7 @@ System logs are first generated from diverse servers and applications and collec
 
 `run.py` is the primary entry point — a single CLI that dispatches every pipeline stage (download, train, eval, convert, infer). `launch_dashboard.py` is an optional local helper that bundles asset download with launching the web UI. Everything else falls into one of three groups — **shared library**, **pipeline stages**, or **supporting assets**.
 
-```
+<pre>
 CECO-LAD/
 │
 │ ── Entry points (run from project root) ─────────────────────────────────
@@ -74,12 +74,12 @@ CECO-LAD/
 ├── quantization/                  # 2. Convert BAT → Q-BAT
 │   └── qbat_export.py             #    A8W4 quantize, export to ExecuTorch .pte
 │
-├── inference_pipeline/            # 3. Edge → routing → cloud
-│   ├── qbat_edge.py               #    Q-BAT inference via ExecuTorch
-│   ├── routing.py                 #    Mahalanobis routing (uncertain → cloud)
-│   ├── bat_cloud.py               #    Full BAT ensemble re-prediction
-│   ├── run.py                     #    Orchestrator (spawns cloud env as subprocess)
-│   └── executorch/                #    Pre-built ExecuTorch runtime
+├── <b>🔴 ceco_lad_inference_pipeline/</b>   # 3. CECO-LAD collaborative inference pipeline: Edge → routing → cloud
+│   ├── lad_qbat_edge.py           #    Edge-side LAD using Q-BAT via ExecuTorch
+│   ├── routing.py                 #    Mahalanobis distance-based routing (uncertain → cloud)
+│   ├── lad_bat_cloud.py           #    Cloud-side LAD using BAT for reevaluation
+│   ├── run.py                     #    Pipeline driver: runs stages 1–4 (invoked by root `run.py infer`)
+│   └── executorch/                #    Pre-built ExecuTorch runtime (fetched by `run.py download`)
 │
 ├── dashboard/                     # 4. Front-end UI for visualization
 │
@@ -102,7 +102,7 @@ CECO-LAD/
     ├── download_checkpoints.py    # Fetch BAT / Q-BAT checkpoints
     ├── download_data.py           # Fetch ExecuTorch runtime + raw logs
     └── deploy/                    # Maintainer-only — Hugging Face Space deployment
-```
+</pre>
 
 ---
 

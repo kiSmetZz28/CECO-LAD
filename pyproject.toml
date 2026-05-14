@@ -31,4 +31,4 @@ ceco-download = "tools.download_checkpoints:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ceco_core*", "training_pipeline*", "inference_pipeline*", "quantization*", "tools*", "dashboard*"]
+include = ["ceco_core*", "training_pipeline*", "ceco_lad_inference_pipeline*", "quantization*", "tools*", "dashboard*"]

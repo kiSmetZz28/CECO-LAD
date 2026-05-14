@@ -42,7 +42,7 @@ QBAT_DIR      = ROOT / "checkpoints" / "qbat"
 MIN_QBAT      = 3   # 3 .pte files per dataset
 
 # ── executor_runner binary ────────────────────────────────────────────────────
-RUNNER_PATH = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+RUNNER_PATH = ROOT / "ceco_lad_inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 
 # ── Dashboard demo video ──────────────────────────────────────────────────────
 DEMO_VIDEO_PATH = ROOT / "dashboard" / "static" / "demo.mp4"

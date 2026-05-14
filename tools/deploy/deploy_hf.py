@@ -100,7 +100,7 @@ api.upload_folder(
         # Q-BAT checkpoints (218 MB) — downloaded at runtime from HF dataset repo
         "checkpoints/qbat/**",
         # Entire executorch directory — compiled libs not needed in Space repo
-        "inference_pipeline/executorch/**",
+        "ceco_lad_inference_pipeline/executorch/**",
         # Local database — rebuilt from scratch on startup
         "dashboard/ceco_lad.db",
         # Demo video (~117 MB) — downloaded at runtime from HF assets dataset repo.

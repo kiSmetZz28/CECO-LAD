@@ -54,7 +54,7 @@ def main() -> None:
 
     from ceco_core.utils.config import load_config, setup_logging
     from ceco_core.utils.metrics import evaluate
-    from inference_pipeline import bat_cloud
+    from ceco_lad_inference_pipeline import lad_bat_cloud
 
     setup_logging("cloud")
     cfg      = load_config(args.config)
@@ -111,8 +111,8 @@ def main() -> None:
     cloud_cfg.setdefault("input_c", input_c)
 
     logging.info("=== Cloud BAT Inference ===")
-    # bat_cloud returns one prediction per line [N_win * win_size]
-    cloud_preds = bat_cloud.run(windows, cloud_cfg)
+    # lad_bat_cloud returns one prediction per line [N_win * win_size]
+    cloud_preds = lad_bat_cloud.run(windows, cloud_cfg)
     np.save(os.path.join(out_base, "cloud_preds.npy"), cloud_preds)
 
     logging.info("=== Stage 4: Hybrid Evaluation ===")

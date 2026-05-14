@@ -20,7 +20,7 @@ from pydantic import BaseModel
 ROOT = Path(__file__).parent.parent
 # Make dashboard/ importable so db.py / ingest.py can be imported directly
 sys.path.insert(0, str(Path(__file__).parent))
-# Make project root importable so ceco_core / inference_pipeline are accessible
+# Make project root importable so ceco_core / ceco_lad_inference_pipeline are accessible
 sys.path.insert(0, str(ROOT))
 import db as _db
 
@@ -376,7 +376,7 @@ def _preload_bat_models(dataset: str) -> None:
 
     try:
         from ceco_core.models.EMAT import EMAT
-        from inference_pipeline.bat_cloud import _load_thresholds
+        from ceco_lad_inference_pipeline.lad_bat_cloud import _load_thresholds
         from itertools import product as iproduct
         import torch as _torch
 
@@ -1271,10 +1271,10 @@ CLOUD_PYTHON = os.getenv("CLOUD_PYTHON", str(_CONDA / "ceco-lad-cloud" / "bin" /
 # True when the full inference pipeline (run.py + ExecuTorch executor_runner) is present.
 # Falls back to demo_runner.py when either component is missing.
 _RUNNER_BIN = (
-    ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+    ROOT / "ceco_lad_inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
 )
 _FULL_PIPELINE_AVAILABLE = (
-    (ROOT / "inference_pipeline" / "run.py").exists()
+    (ROOT / "ceco_lad_inference_pipeline" / "run.py").exists()
     and _RUNNER_BIN.exists()
 )
 
@@ -1352,7 +1352,7 @@ def _build_infer_cmd(ds: str, tolerance: float, distance: str) -> list[str]:
         script = (
             f'set -euo pipefail\n'
             f'echo "--- Phase 1/2: Edge inference  (env: ceco-lad) ---"\n'
-            f'{EDGE_PYTHON} -m inference_pipeline.run --config {edge_cfg}\n'
+            f'{EDGE_PYTHON} -m ceco_lad_inference_pipeline.run --config {edge_cfg}\n'
             f'echo "--- Phase 2/2: Cloud inference (env: hybrid)   ---"\n'
             f'{CLOUD_PYTHON} dashboard/cloud_runner.py --config {cloud_cfg}\n'
         )
@@ -1361,7 +1361,7 @@ def _build_infer_cmd(ds: str, tolerance: float, distance: str) -> list[str]:
         script = (
             f'set -euo pipefail\n'
             f'echo "--- Edge inference (env: ceco-lad) ---"\n'
-            f'{EDGE_PYTHON} -m inference_pipeline.run --config {cloud_cfg}\n'
+            f'{EDGE_PYTHON} -m ceco_lad_inference_pipeline.run --config {cloud_cfg}\n'
         )
     return ["bash", "-c", script]
 

@@ -29,15 +29,15 @@ RUN pip install --no-cache-dir \
 COPY ceco_core/ /app/ceco_core/
 
 # ── Inference pipeline ────────────────────────────────────────────────────────
-COPY inference_pipeline/__init__.py      /app/inference_pipeline/__init__.py
-COPY inference_pipeline/bat_cloud.py     /app/inference_pipeline/bat_cloud.py
-COPY inference_pipeline/routing.py       /app/inference_pipeline/routing.py
-COPY inference_pipeline/qbat_edge.py     /app/inference_pipeline/qbat_edge.py
-COPY inference_pipeline/run.py           /app/inference_pipeline/run.py
-COPY inference_pipeline/evaluate.py      /app/inference_pipeline/evaluate.py
+COPY ceco_lad_inference_pipeline/__init__.py       /app/ceco_lad_inference_pipeline/__init__.py
+COPY ceco_lad_inference_pipeline/lad_bat_cloud.py  /app/ceco_lad_inference_pipeline/lad_bat_cloud.py
+COPY ceco_lad_inference_pipeline/routing.py        /app/ceco_lad_inference_pipeline/routing.py
+COPY ceco_lad_inference_pipeline/lad_qbat_edge.py  /app/ceco_lad_inference_pipeline/lad_qbat_edge.py
+COPY ceco_lad_inference_pipeline/run.py            /app/ceco_lad_inference_pipeline/run.py
+COPY ceco_lad_inference_pipeline/evaluate.py       /app/ceco_lad_inference_pipeline/evaluate.py
 
 # Create the directory for executor_runner (downloaded at first launch by tools/deploy/spaces_startup.py)
-RUN mkdir -p /app/inference_pipeline/executorch/cmake-out
+RUN mkdir -p /app/ceco_lad_inference_pipeline/executorch/cmake-out
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 COPY dashboard/app.py          /app/dashboard/app.py

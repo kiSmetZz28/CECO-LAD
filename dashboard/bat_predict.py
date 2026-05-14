@@ -93,7 +93,7 @@ def main() -> None:
         return
 
     try:
-        from inference_pipeline.bat_cloud import _load_thresholds
+        from ceco_lad_inference_pipeline.lad_bat_cloud import _load_thresholds
         thresholds_dict = _load_thresholds(str(thresh_path))
     except Exception as exc:
         _out({"error": f"Could not load thresholds: {exc}"})

@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 # ── Asset locations ───────────────────────────────────────────────────────────
-EXECUTORCH_DIR    = ROOT / "inference_pipeline" / "executorch"
+EXECUTORCH_DIR    = ROOT / "ceco_lad_inference_pipeline" / "executorch"
 EXECUTOR_RUNNER   = EXECUTORCH_DIR / "cmake-out" / "executor_runner"
 EXECUTORCH_GDRIVE   = "1kWFsJfhUn2L-T9gQ-IuAt9kNjB86ToHo"  # ExecuTorch 0.5.0 pre-built
 
@@ -176,11 +176,11 @@ def setup_executorch() -> bool:
     if not _executorch_ok():
         print("[1/5] Downloading ExecuTorch 0.5.0 (~1.4 GB) from Google Drive …")
         _ensure_gdown()
-        zip_path = ROOT / "inference_pipeline" / "executorch.zip"
+        zip_path = ROOT / "ceco_lad_inference_pipeline" / "executorch.zip"
         if not _gdrive_download(EXECUTORCH_GDRIVE, zip_path):
             print("  WARNING: ExecuTorch download failed — edge inference unavailable.")
             return False
-        _extract(zip_path, ROOT / "inference_pipeline")
+        _extract(zip_path, ROOT / "ceco_lad_inference_pipeline")
         if not _executorch_ok():
             print("  WARNING: executor_runner not found after extraction.")
             return False
