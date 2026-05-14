@@ -376,7 +376,7 @@ def _preload_bat_models(dataset: str) -> None:
 
     try:
         from ceco_core.models.EMAT import EMAT
-        from inference_pipeline.cloud_expert import _load_thresholds
+        from inference_pipeline.bat_cloud import _load_thresholds
         from itertools import product as iproduct
         import torch as _torch
 
@@ -1330,7 +1330,7 @@ def _build_cmd(req: RunRequest) -> list[str]:
                 "--config", f"configs/training/{ds}.yaml",
                 "--voting", req.voting]
     if req.command == "convert":
-        return [EDGE_PYTHON, "quantization/convert.py",
+        return [EDGE_PYTHON, "quantization/qbat_export.py",
                 "--config", f"configs/training/{ds}.yaml", "--all"]
     if req.command == "infer":
         return _build_infer_cmd(ds, req.routing_tolerance, req.routing_distance)

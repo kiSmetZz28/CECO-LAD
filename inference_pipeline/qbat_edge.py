@@ -27,7 +27,7 @@ _RUNNER_AVAILABLE = _RUNNER_BIN.is_file() and (os.name == "nt" or os.access(str(
 
 
 class EdgeResult(NamedTuple):
-    """Output of edge_agent.run()."""
+    """Output of qbat_edge.run()."""
     predictions: np.ndarray
     ground_truth: np.ndarray
     energy_matrix: np.ndarray

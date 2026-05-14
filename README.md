@@ -37,16 +37,16 @@ For deployment in heterogeneous cloud-edge environments, CECO-LAD adopts a colla
 
 ### Paper ↔ Code Mapping
 
-| Paper component                              | Code location                                                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Enhanced Anomaly Transformer (EM-AT) base learner | [ceco_core/models/EMAT.py](ceco_core/models/EMAT.py), [attn.py](ceco_core/models/attn.py), [embed.py](ceco_core/models/embed.py) |
-| BAT — cloud bagging ensemble (training)      | [training_pipeline/train.py](training_pipeline/train.py), [solver.py](training_pipeline/solver.py), [evaluate.py](training_pipeline/evaluate.py) |
-| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/convert.py](quantization/convert.py)                                                  |
-| Q-BAT edge inference                         | [inference_pipeline/edge_agent.py](inference_pipeline/edge_agent.py)                                         |
-| Mahalanobis distance-based routing policy    | [inference_pipeline/routing.py](inference_pipeline/routing.py)                                               |
-| BAT cloud re-prediction on routed samples    | [inference_pipeline/cloud_expert.py](inference_pipeline/cloud_expert.py)                                     |
+| Paper component                              | Code location                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Log preprocessing (raw logs → feature matrix) | [ceco_core/data/](ceco_core/data/)                                                     |
+| Enhanced Anomaly Transformer (EM-AT) base learner | [ceco_core/models/](ceco_core/models/)                                             |
+| BAT — cloud bagging ensemble (training)      | [training_pipeline/](training_pipeline/)                                               |
+| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/qbat_export.py](quantization/qbat_export.py)               |
+| Q-BAT edge inference                         | [inference_pipeline/qbat_edge.py](inference_pipeline/qbat_edge.py)                     |
+| Mahalanobis distance-based routing policy    | [inference_pipeline/routing.py](inference_pipeline/routing.py)                         |
+| BAT cloud re-prediction on routed samples    | [inference_pipeline/bat_cloud.py](inference_pipeline/bat_cloud.py)                     |
 | Cloud–edge collaborative orchestration       | [inference_pipeline/run.py](inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
-| Log preprocessing (raw logs → feature matrix) | [ceco_core/data/preprocessor.py](ceco_core/data/preprocessor.py), [loaders.py](ceco_core/data/loaders.py)    |
 
 ---
 
@@ -74,12 +74,12 @@ CECO-LAD/
 │   └── evaluate.py                #    Per-model F1 + EM-GMM thresholds
 │
 ├── quantization/                  # 2. Convert BAT → Q-BAT
-│   └── convert.py                 #    A8W4 quantize, export to ExecuTorch .pte
+│   └── qbat_export.py             #    A8W4 quantize, export to ExecuTorch .pte
 │
 ├── inference_pipeline/            # 3. Edge → routing → cloud
-│   ├── edge_agent.py              #    Q-BAT inference via ExecuTorch
+│   ├── qbat_edge.py               #    Q-BAT inference via ExecuTorch
 │   ├── routing.py                 #    Mahalanobis routing (uncertain → cloud)
-│   ├── cloud_expert.py            #    Full BAT ensemble re-prediction
+│   ├── bat_cloud.py               #    Full BAT ensemble re-prediction
 │   ├── run.py                     #    Orchestrator (spawns cloud env as subprocess)
 │   └── executorch/                #    Pre-built ExecuTorch runtime
 │

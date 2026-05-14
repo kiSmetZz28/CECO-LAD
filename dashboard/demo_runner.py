@@ -10,7 +10,7 @@ the edge scan and the cloud re-check:
   Stage 3  Cloud      — full BAT ensemble on routed windows (parallel)
   Stage 4  Evaluation — hybrid metrics
 
-Log messages deliberately mirror edge_agent.py / cloud_expert.py format so
+Log messages deliberately mirror qbat_edge.py / bat_cloud.py format so
 the dashboard's live-progress parser (parseLiveLine in index.html) works
 without any changes to the frontend.
 
@@ -37,7 +37,7 @@ from ceco_core.utils.config import load_config, setup_logging
 from ceco_core.utils.energy import compute_energy_batch
 from ceco_core.utils.io import mkdir
 from ceco_core.utils.metrics import evaluate
-from inference_pipeline.cloud_expert import _load_thresholds, run as cloud_run
+from inference_pipeline.bat_cloud import _load_thresholds, run as cloud_run
 from inference_pipeline.routing import compute_inv_cov, select_indices_by_distance
 
 
@@ -78,7 +78,7 @@ def _run_edge_bat(
     """Run one BAT checkpoint as an edge-scan model.
 
     Returns (energy_col [N,1], threshold) or None if checkpoint/threshold missing.
-    Log format mirrors edge_agent.py so the frontend progress parser triggers.
+    Log format mirrors qbat_edge.py so the frontend progress parser triggers.
     """
     ep, k, layers, bsz = combo
     name = f"{dataset}_e{ep}_k{k}_l{layers}_b{bsz}"
@@ -107,7 +107,7 @@ def _run_edge_bat(
     energy = np.concatenate(parts)
     del model
 
-    # Mirror edge_agent.py log format → frontend threshold display triggers
+    # Mirror qbat_edge.py log format → frontend threshold display triggers
     logging.info("Edge agent: model '%s'  threshold=%.6f", name, thresh)
     return (energy.reshape(-1, 1), thresh)
 

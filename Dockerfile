@@ -30,9 +30,9 @@ COPY ceco_core/ /app/ceco_core/
 
 # ── Inference pipeline ────────────────────────────────────────────────────────
 COPY inference_pipeline/__init__.py      /app/inference_pipeline/__init__.py
-COPY inference_pipeline/cloud_expert.py  /app/inference_pipeline/cloud_expert.py
+COPY inference_pipeline/bat_cloud.py     /app/inference_pipeline/bat_cloud.py
 COPY inference_pipeline/routing.py       /app/inference_pipeline/routing.py
-COPY inference_pipeline/edge_agent.py    /app/inference_pipeline/edge_agent.py
+COPY inference_pipeline/qbat_edge.py     /app/inference_pipeline/qbat_edge.py
 COPY inference_pipeline/run.py           /app/inference_pipeline/run.py
 COPY inference_pipeline/evaluate.py      /app/inference_pipeline/evaluate.py
 
