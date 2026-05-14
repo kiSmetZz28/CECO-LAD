@@ -116,7 +116,7 @@ select:focus{outline:none;border-color:var(--blue);}
 .pill-btn.pill-anom.active{background:var(--red);border-color:var(--red);}
 .pill-btn.pill-norm.active{background:var(--green);border-color:var(--green);}
 
-/* ── Context-window table ──────────────────────────────── */
+/* ── Sliding context window table ───────────────────────── */
 .ctx-table{width:100%;border-collapse:collapse;font-size:10px;font-family:monospace;margin-top:6px;}
 .ctx-table th,.ctx-table td{padding:3px 5px;border:1px solid var(--border);text-align:center;}
 .ctx-table th{background:var(--bg);font-weight:700;color:var(--muted);}
@@ -450,7 +450,7 @@ select:focus{outline:none;border-color:var(--blue);}
 }
 .btn-help:hover{background:var(--bg);color:var(--text);}
 
-/* ── Context-window float tooltip ───────────────────────── */
+/* ── Sliding context window float tooltip ────────────────── */
 .ctx-float{
   position:fixed;z-index:4000;
   background:var(--card);border:1px solid var(--border);
@@ -508,6 +508,24 @@ select:focus{outline:none;border-color:var(--blue);}
       <span id="statusTxt">Idle</span>
     </div>
   </div>
+</div>
+
+<!-- ══ ONLINE-DEMO NOTICE (revealed in demo mode only) ══════════════════════ -->
+<div id="demoNotice"
+     style="display:none;margin:12px 16px 0;padding:12px 16px;
+            background:#eaf3ff;border:1px solid #b6d4fe;border-left:4px solid #2563eb;
+            border-radius:6px;color:#1e3a8a;font-size:13.5px;line-height:1.55;">
+  <strong>Note on the online demo.</strong>
+  For ease of online demonstration, the online demo
+  (<a href="https://kismetzz-ceco-lad.hf.space/"
+      style="color:#1d4ed8;text-decoration:underline;">https://kismetzz-ceco-lad.hf.space/</a>)
+  runs both the edge-side LAD and the cloud-side LAD, together with the
+  inference routing policy, within the same execution environment. This
+  design is intended only to provide reviewers and readers with a convenient
+  way to verify the complete CECO-LAD workflow online. In the actual
+  deployment setting and in our experiments, however, the edge-side phase is
+  deployed independently on resource-constrained edge devices, such as
+  Raspberry Pi devices.
 </div>
 
 <!-- ══ GUIDED TOUR ═══════════════════════════════════════════ -->
@@ -625,7 +643,7 @@ select:focus{outline:none;border-color:var(--blue);}
     <div class="card">
       <div class="step-hdr"><span class="step-title">Demo Video</span></div>
       <div class="card-help">
-        See single log prediction demo  across all three datasets — Edge Q-BAT and Cloud BAT work collaboratively via the Mahalanobis distance-based routing policy.
+        See single sliding context window prediction demo across all three datasets — Edge-side LAD and Cloud-side LAD work collaboratively via the Mahalanobis distance-based routing policy.
       </div>
       <button class="btn" style="width:100%;font-size:13px" onclick="openDemoVideo()">▶ Watch Demo</button>
     </div>
@@ -671,7 +689,12 @@ select:focus{outline:none;border-color:var(--blue);}
 
     <!-- Run -->
     <div class="card">
-      <div class="step-hdr"><span class="step-title">Run Analysis — Full Test Set</span></div>
+      <div class="step-hdr"><span class="step-title">Run Analysis</span></div>
+
+      <!-- ① Full Test Set ─────────────────────────────────── -->
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin:4px 0 4px">
+        ① Full Test Set
+      </div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">
         Runs the test set end-to-end through all pipeline stages
         and reports aggregate metrics (accuracy, precision, recall, F1).
@@ -682,9 +705,17 @@ select:focus{outline:none;border-color:var(--blue);}
       <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.7;text-align:center">
         Edge → Selective Routing → Cloud
       </div>
-      <div style="font-size:10px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);line-height:1.5">
-        💡 To predict a <strong>single log line</strong>, scroll down to the
-        <strong>Pipeline</strong> table and <strong>click any raw log row</strong>.
+
+      <!-- ② Single Sliding Context Window Prediction ───────────────── -->
+      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">
+          ② Single Sliding Context Window Prediction
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5">
+          Scroll down to the <strong>Pipeline</strong> table and
+          <strong>click any raw log row</strong> to predict using its context
+          window through the full pipeline.
+        </div>
       </div>
     </div>
 
@@ -852,13 +883,13 @@ select:focus{outline:none;border-color:var(--blue);}
           </div>
           <div id="rppLog" class="rpp-log"></div>
           <div id="rppCtx" class="rpp-ctx" style="display:none">
-            <div class="rpp-ctx-title">Forward sequence — 10 preceding events (context window)</div>
+            <div class="rpp-ctx-title">Forward sequence — 10 preceding events (sliding context window)</div>
             <div id="rppCtxRows"></div>
           </div>
           <div id="rppResult" style="padding:10px 14px 12px"></div>
         </div>
 
-        <!-- Session detail (hidden — context windows shown inline in the sessions column) -->
+        <!-- Session detail (hidden — sliding context windows shown inline in the sessions column) -->
         <div class="pl-detail" id="plDetail" style="display:none !important">
           <div class="pl-detail-title">
             <span id="plDetailTitle">Session</span>
@@ -878,16 +909,16 @@ select:focus{outline:none;border-color:var(--blue);}
             </div>
           </div>
 
-          <!-- Preprocessor output: full context window matrix -->
+          <!-- Preprocessor output: full sliding context window matrix -->
           <div>
             <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
-              Preprocessor output — context window matrix
+              Preprocessor output — sliding context window matrix
               <span style="font-weight:400;text-transform:none;letter-spacing:0">
                 (<span id="plDetailCtxTotal">—</span> events · each row = one event · columns = context steps back · <code style="font-size:9px">·</code> = NO_EVENT padding)
               </span>
             </div>
             <div style="font-size:10px;color:var(--muted);margin-bottom:5px;line-height:1.5">
-              The preprocessor slides a context window of length 10 over each session.
+              The preprocessor applies a sliding context window of length 10 over each session.
               For each event, the model sees the 10 preceding event IDs as context (filled with NO_EVENT=−1337 when no preceding event exists).
               These rows are fed row-by-row into the AI model (windows of 100 events at a time).
             </div>
@@ -960,10 +991,10 @@ select:focus{outline:none;border-color:var(--blue);}
 <div class="modal-overlay" id="demoVideoModal" onclick="closeDemoVideo(event)">
   <div class="modal-box" style="max-width:900px">
     <button class="modal-close" onclick="closeDemoVideo()">✕</button>
-    <div class="modal-title">Demo — Single Log Prediction</div>
+    <div class="modal-title">Demo — Single Sliding Context Window Prediction</div>
     <video id="demoVideoPlayer" controls style="width:100%;border-radius:8px;background:#000"
            preload="none">
-      <source src="/static/demo.mp4" type="video/mp4">
+      <source src="/static/demo.mp4?v=2" type="video/mp4">
       Your browser does not support the video tag.
     </video>
   </div>
@@ -1028,11 +1059,10 @@ async function initDemoMode() {
     const d = await fetch('/api/info').then(r => r.json());
     if (!d.demo_mode) return;
     S.demoMode = true;
-    // Set OS as default — update state and UI without triggering plLoad early
-    S.dataset = 'os';
-    document.querySelectorAll('.ds-btn').forEach(b => b.classList.remove('active'));
-    const btn = document.getElementById('ds-os');
-    if (btn) btn.classList.add('active');
+    const notice = document.getElementById('demoNotice');
+    if (notice) notice.style.display = 'block';
+    // Default dataset (BGL) and active button state are already set in the
+    // initial state / HTML — no override needed for demo mode.
     updatePipelineBanner();
   } catch {}
 }
@@ -1574,9 +1604,9 @@ function renderLiveThresholds(){const e=Object.entries(LP.thresholds);if(!e.leng
 function renderLiveRouting(){if(!LP.routing)return;const{routed,total}=LP.routing,p=total>0?(routed/total*100).toFixed(1):'0.0';document.getElementById('routingLive').innerHTML=`<span style="font-size:20px;font-weight:700;color:var(--amber)">${routed.toLocaleString()}</span> <span style="color:var(--muted);font-size:11px">/ ${total.toLocaleString()} windows</span><div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:${p}%"></div></div><div style="font-size:10px;color:var(--muted);margin-top:3px">${p}% routed to cloud</div>`;}
 function renderLiveMetrics(){if(!LP.metrics.length)return;document.getElementById('metricsLive').innerHTML=LP.metrics.map(m=>`<div class="live-metric-row"><span style="color:var(--muted);min-width:50px">${m.prefix}</span><span>Acc <strong style="color:var(--blue)">${pct(m.acc)}</strong></span><span>Prec <strong style="color:var(--green)">${pct(m.prec)}</strong></span><span>Rec <strong style="color:var(--amber)">${pct(m.rec)}</strong></span><span>F1 <strong style="color:var(--red)">${pct(m.f1)}</strong></span></div>`).join('');}
 
-/* ── Context window renderer ────────────────────────────── */
+/* ── Sliding context window renderer ───────────────────── */
 
-/* Scaled context-window table: renders server-supplied float matrix.
+/* Scaled sliding context window table: renders server-supplied float matrix.
    Columns 0..9 = context (t-10..t-1). No current event in feature vector —
    matches Preprocessor.sequence() context_length=10.
    NO_EVENT positions (i - back < 0) shown in muted style. */
@@ -1585,7 +1615,7 @@ function scaledCtxTable(matrix) {
   return rows ? `<table class="mini-ctx">${rows}</table>` : '<span style="color:var(--muted);font-size:9px">Scaler not ready</span>';
 }
 
-/* Return <tr> rows for one session's raw-ID context window matrix (no table wrapper). */
+/* Return <tr> rows for one session's raw-ID sliding context window matrix (no table wrapper). */
 function miniCtxRows(contentStr) {
   const events = (contentStr || '').trim().split(/\s+/).filter(Boolean);
   let html = '';
@@ -1600,7 +1630,7 @@ function miniCtxRows(contentStr) {
   return html;
 }
 
-/* Return <tr> rows for one session's scaled context window matrix (no table wrapper). */
+/* Return <tr> rows for one session's scaled sliding context window matrix (no table wrapper). */
 function scaledCtxRows(matrix) {
   if (!matrix || !matrix.length) return '';
   let html = '';
@@ -1846,7 +1876,7 @@ async function selectRawLog(el) {
   badge.innerHTML     = '';
   logDiv.textContent  = content;
 
-  // ── Load forward sequence (context window) for this log entry ──
+  // ── Load forward sequence (sliding context window) for this log entry ──
   (async () => {
     const ctxDiv  = document.getElementById('rppCtx');
     const ctxRows = document.getElementById('rppCtxRows');
@@ -2119,8 +2149,8 @@ const TOUR_STEPS = [
   { title: '④ Explore Results',
     desc: 'The <strong>Results</strong> tab shows the Anomaly Timeline — ground truth, Edge predictions, and final Edge + Cloud collaborative predictions side by side.',
     target: '.tab[data-tab="results"]', pad: 6, pos: 'bottom' },
-  { title: '⑤ Predict a Single Log Line',
-    desc: 'Click <strong>any raw log row</strong> like this one to score it through the full Edge → Routing → Cloud pipeline. The model does <strong>not</strong> look at the single line alone — it uses that line\'s <strong>forward sequence</strong> (the 10 preceding events that form its context window) for evaluation. The 10-event context and the final verdict appear inline below the row.',
+  { title: '⑤ Predict a Single Sliding Context Window',
+    desc: 'Click <strong>any raw log row</strong> like this one to score it through the full Edge → Routing → Cloud pipeline. The model does <strong>not</strong> look at the single line alone — it uses that line\'s <strong>forward sequence</strong> (the 10 preceding events that form its sliding context window) for evaluation. The 10-event context and the final verdict appear inline below the row.',
     target: '#plRawBody .pl-row', fallback: '#plRawBody', pad: 6, pos: 'left', isLast: true },
 ];
 
@@ -2217,7 +2247,7 @@ function closeTour() {
   document.getElementById('tourIntroOverlay').classList.add('hidden');
   document.getElementById('tourHighlight').classList.add('hidden');
   document.getElementById('tourTooltip').classList.add('hidden');
-  _tourStep = -1;   // reset so the context-window tooltip re-enables
+  _tourStep = -1;   // reset so the sliding context window tooltip re-enables
 }
 function tourClickOutside(e) {
   if (e.target === document.getElementById('tourIntroOverlay')) closeTour();
@@ -2242,7 +2272,7 @@ function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 function fmtBytes(n){ return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'; }
 function fmtNum(n){ if(n===undefined||n===null)return'—'; if(n>=1e6)return(n/1e6).toFixed(1)+'M'; if(n>=1e3)return(n/1e3).toFixed(1)+'K'; return String(n); }
 function levelTag(lvl){ const l=(lvl||'').toUpperCase(); if(l==='ERROR'||l==='FATAL')return'tag-edge'; if(l==='WARNING'||l==='WARN')return'tag-cloud'; return''; }
-/* ── Context-window float tooltip ───────────────────────── */
+/* ── Sliding context window float tooltip ────────────────── */
 const _ctxCache = {};      // key: `${dataset}|${line_number}` → response data
 let   _ctxVisible    = false;
 let   _ctxCurrentRow = null;  // the .pl-row element currently being hovered
@@ -2380,9 +2410,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 </script>
 
-<!-- Context-window floating tooltip -->
+<!-- Sliding context window floating tooltip -->
 <div class="ctx-float" id="ctxFloatTip">
-  <div class="ctx-float-title">Forward sequence — context window (size = 10 preceding events)</div>
+  <div class="ctx-float-title">Forward sequence — sliding context window (size = 10 preceding events)</div>
   <div id="ctxFloatBody"></div>
 </div>
 

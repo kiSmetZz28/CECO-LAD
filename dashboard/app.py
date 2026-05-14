@@ -26,10 +26,24 @@ import db as _db
 
 app = FastAPI(title="CECO-LAD Dashboard")
 
-# Serve static assets (demo video etc.) from the dashboard directory
+# Serve static assets (demo video etc.) from the dashboard directory.
+#
+# Subclass adds `Cache-Control: no-cache, must-revalidate` for .mp4 files so
+# browsers always send a conditional request before reusing a cached copy. The
+# demo video occasionally gets re-uploaded; without this header a stale entry
+# in the visitor's HTTP cache (e.g. a 134-byte LFS pointer from an earlier
+# broken deploy) is served indefinitely. Range requests still work — that
+# behaviour lives in the parent class's `file_response`, which we delegate to.
+class _RevalidatingStatic(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        if str(full_path).endswith(".mp4"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
 _static_dir = Path(__file__).parent / "static"
 _static_dir.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+app.mount("/static", _RevalidatingStatic(directory=str(_static_dir)), name="static")
 
 # Set DEMO_MODE=1 to disable pipeline execution and live inference (for hosted demos).
 DEMO_MODE = os.getenv("DEMO_MODE", "0") == "1"

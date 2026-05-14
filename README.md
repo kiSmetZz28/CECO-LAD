@@ -35,6 +35,19 @@ System logs are first generated from diverse servers and applications and collec
 
 For deployment in heterogeneous cloud-edge environments, CECO-LAD adopts a collaborative inference strategy: the BAT model is hosted on the cloud server, while the lightweight Q-BAT model runs on resource-constrained edge devices. A Mahalanobis distance-based routing policy enables collaborative anomaly analysis, forwarding hard cases from the edge to the cloud for more accurate prediction. Finally, the Green-LADE method is integrated to assess computational resource efficiency, quantifying the trade-off between resource consumption and detection capability across cloud and edge deployments.
 
+### Paper ↔ Code Mapping
+
+| Paper component                              | Code location                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Enhanced Anomaly Transformer (EM-AT) base learner | [ceco_core/models/EMAT.py](ceco_core/models/EMAT.py), [attn.py](ceco_core/models/attn.py), [embed.py](ceco_core/models/embed.py) |
+| BAT — cloud bagging ensemble (training)      | [training_pipeline/train.py](training_pipeline/train.py), [solver.py](training_pipeline/solver.py), [evaluate.py](training_pipeline/evaluate.py) |
+| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/convert.py](quantization/convert.py)                                                  |
+| Q-BAT edge inference                         | [inference_pipeline/edge_agent.py](inference_pipeline/edge_agent.py)                                         |
+| Mahalanobis distance-based routing policy    | [inference_pipeline/routing.py](inference_pipeline/routing.py)                                               |
+| BAT cloud re-prediction on routed samples    | [inference_pipeline/cloud_expert.py](inference_pipeline/cloud_expert.py)                                     |
+| Cloud–edge collaborative orchestration       | [inference_pipeline/run.py](inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
+| Log preprocessing (raw logs → feature matrix) | [ceco_core/data/preprocessor.py](ceco_core/data/preprocessor.py), [loaders.py](ceco_core/data/loaders.py)    |
+
 ---
 
 ## Repository Structure
