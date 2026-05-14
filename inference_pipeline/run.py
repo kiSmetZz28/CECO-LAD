@@ -2,16 +2,16 @@
 
 Stages
 ------
-1. edge   : Q-BAT models compute per-model energy scores  [ceco-lad env]
-2. route  : Mahalanobis routing selects uncertain windows  [ceco-lad env]
-3. cloud  : BAT ensemble re-predicts routed windows        [hybrid env — subprocess]
-4. hybrid : Merge edge and cloud predictions, log metrics  [hybrid env — subprocess]
+1. edge   : Q-BAT models compute per-model energy scores  [ceco-lad-edge env]
+2. route  : Mahalanobis routing selects uncertain windows  [ceco-lad-edge env]
+3. cloud  : BAT ensemble re-predicts routed windows        [ceco-lad-cloud env — subprocess]
+4. hybrid : Merge edge and cloud predictions, log metrics  [ceco-lad-cloud env — subprocess]
 
-Stage 3+4 always run inside the hybrid conda environment by calling
+Stage 3+4 always run inside the ceco-lad-cloud conda environment by calling
 cloud_runner.py as a subprocess.  The Python interpreter is located via
 _detect_cloud_python() which checks (in order):
   1. CECO_CLOUD_PYTHON environment variable
-  2. ~/miniconda3/envs/hybrid/bin/python
+  2. ~/miniconda3/envs/ceco-lad-cloud/bin/python
   3. sys.executable  (same-env fallback)
 """
 import argparse
@@ -32,22 +32,22 @@ from ceco_core.utils.metrics import evaluate
 from inference_pipeline import qbat_edge
 from inference_pipeline.routing import compute_inv_cov, select_indices_by_distance
 
-# bat_cloud is NOT imported here — BAT models always run in the hybrid env.
+# bat_cloud is NOT imported here — BAT models always run in the ceco-lad-cloud env.
 
 
 def _detect_cloud_python() -> str:
-    """Return the path to the hybrid-env Python interpreter.
+    """Return the path to the ceco-lad-cloud env Python interpreter.
 
     Override by setting the CECO_CLOUD_PYTHON environment variable.
-    Falls back to sys.executable when the hybrid env is not found
+    Falls back to sys.executable when the ceco-lad-cloud env is not found
     (single-environment setups where both edge and cloud share one env).
     """
     env_var = os.environ.get("CECO_CLOUD_PYTHON")
     if env_var:
         return env_var
-    hybrid = Path.home() / "miniconda3" / "envs" / "hybrid" / "bin" / "python"
-    if hybrid.exists():
-        return str(hybrid)
+    cloud_py = Path.home() / "miniconda3" / "envs" / "ceco-lad-cloud" / "bin" / "python"
+    if cloud_py.exists():
+        return str(cloud_py)
     return sys.executable
 
 
@@ -147,7 +147,7 @@ def run_inference(inference_config_path: str) -> None:
         np.save(os.path.join(out_base, 'routed_lines.npy'), routed_lines)
 
     # ── Stages 3+4: Cloud BAT inference + hybrid merge ────────────────────
-    # Always run in the hybrid conda env via cloud_runner.py subprocess so that
+    # Always run in the ceco-lad-cloud conda env via cloud_runner.py subprocess so that
     # BAT checkpoints are never loaded inside the ceco-lad environment.
 
     cloud_cfg = cfg.get('cloud')

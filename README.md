@@ -94,8 +94,8 @@ CECO-LAD/
 ├── logs/                          # Training & inference logs
 │
 ├── environment/                   # Python dependency lists
-│   ├── cloud/requirements.txt     #   Training, eval, cloud inference, dashboard
-│   └── edge/requirements.txt      #   ExecuTorch edge inference
+│   ├── cloud/requirements.txt     #   Training, eval, cloud inference
+│   └── edge/requirements.txt      #   ExecuTorch edge inference, dashboard
 │
 │ ── Tooling ──────────────────────────────────────────────────────────────
 └── tools/
@@ -178,7 +178,7 @@ For other stages — `train`, `eval`, `convert` — see [Advanced Options](#adva
 
 ### Optional — Launch the local dashboard
 
-`launch_dashboard.py` wraps the inference pipeline in a web UI at **http://localhost:8765**. Unlike `run.py download`, it also fetches the ExecuTorch CPU runtime and the raw log files needed for the dashboard's log-browsing panels:
+`launch_dashboard.py` wraps the inference pipeline in a web UI at **http://localhost:8765**. It performs the same checkpoint + ExecuTorch download as `run.py download`, and additionally fetches the **raw log files** needed for the dashboard's log-browsing panels:
 
 ```bash
 conda activate ceco-lad-edge
@@ -194,14 +194,11 @@ A built-in **? Help** button in the dashboard guides you through all features. O
 
 ## Advanced Options
 
-### Run edge or cloud only
+### Cloud-side re-check only
+
+If the edge phase has already been run and you only want to re-run the cloud-side BAT re-prediction step:
 
 ```bash
-# Edge inference only (no cloud re-check)
-conda activate ceco-lad-edge
-python -m inference_pipeline.run --config configs/inference/os.yaml --edge-only
-
-# Cloud re-check only (requires edge outputs to already exist)
 conda activate ceco-lad-cloud
 python dashboard/cloud_runner.py --config configs/inference/os.yaml
 ```
@@ -215,14 +212,7 @@ python run.py train bgl
 python run.py train hdfs
 ```
 
-Runs a hyperparameter sweep — 81 models per dataset. Then regenerate thresholds:
-
-```bash
-conda activate ceco-lad-edge
-python run.py eval os
-python run.py eval bgl
-python run.py eval hdfs
-```
+Each `train` invocation runs a hyperparameter sweep over `(num_epochs, k, e_layer_num, batch_size)` and writes **81 BAT checkpoints** to `checkpoints/bat/<dataset>/`.
 
 ### Convert to edge models
 

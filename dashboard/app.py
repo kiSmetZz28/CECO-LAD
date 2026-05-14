@@ -1265,8 +1265,8 @@ def _parse_log_metrics(lines: list[str]) -> dict:
 # Override EDGE_PYTHON / CLOUD_PYTHON env vars to use a different interpreter
 # (e.g. set both to sys.executable in Docker where conda envs don't exist).
 _CONDA = Path.home() / "miniconda3" / "envs"
-EDGE_PYTHON  = os.getenv("EDGE_PYTHON",  str(_CONDA / "ceco-lad" / "bin" / "python"))
-CLOUD_PYTHON = os.getenv("CLOUD_PYTHON", str(_CONDA / "hybrid"   / "bin" / "python"))
+EDGE_PYTHON  = os.getenv("EDGE_PYTHON",  str(_CONDA / "ceco-lad-edge"  / "bin" / "python"))
+CLOUD_PYTHON = os.getenv("CLOUD_PYTHON", str(_CONDA / "ceco-lad-cloud" / "bin" / "python"))
 
 # True when the full inference pipeline (run.py + ExecuTorch executor_runner) is present.
 # Falls back to demo_runner.py when either component is missing.

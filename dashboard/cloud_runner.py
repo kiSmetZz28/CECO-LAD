@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cloud inference phase — runs in the cloud conda env (e.g. 'hybrid').
+"""Cloud inference phase — runs in the cloud conda env (ceco-lad-cloud).
 
 Reads intermediate files saved by the edge phase and runs the BAT ensemble.
 Called automatically by the dashboard when using split environments.
