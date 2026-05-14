@@ -78,7 +78,7 @@ CECO-LAD/
 │   ├── lad_qbat_edge.py           #    Edge-side LAD using Q-BAT via ExecuTorch
 │   ├── routing.py                 #    Mahalanobis distance-based routing (uncertain → cloud)
 │   ├── lad_bat_cloud.py           #    Cloud-side LAD using BAT for reevaluation
-│   ├── run.py                     #    Pipeline driver: runs stages 1–4 (invoked by root `run.py infer`)
+│   ├── run.py                     #    Pipeline driver: runs stages 1–4
 │   └── executorch/                #    Pre-built ExecuTorch runtime (fetched by `run.py download`)
 │
 ├── dashboard/                     # 4. Front-end UI for visualization
