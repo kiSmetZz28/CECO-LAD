@@ -31,22 +31,20 @@ CECO-LAD detects anomalies in system logs using a hybrid Cloud-Edge collaboratio
 
 ### Framework Overview
 
-System logs are first generated from diverse servers and applications and collected by distributed log collection servers. A log processing pipeline then parses raw log messages into structured formats, partitions them into sequences, and converts them into feature matrices as input for the anomaly detector.
-
-For deployment in heterogeneous cloud-edge environments, CECO-LAD adopts a collaborative inference strategy: the BAT model is hosted on the cloud server, while the lightweight Q-BAT model runs on resource-constrained edge devices. A Mahalanobis distance-based routing policy enables collaborative anomaly analysis, forwarding hard cases from the edge to the cloud for more accurate prediction. Finally, the Green-LADE method is integrated to assess computational resource efficiency, quantifying the trade-off between resource consumption and detection capability across cloud and edge deployments.
+System logs are first generated from diverse servers and applications and collected by distributed log collection servers. A log processing pipeline then parses raw log messages into structured formats, partitions them into sequences, and converts them into feature matrices as input for the anomaly detector. For deployment in heterogeneous cloud-edge environments, CECO-LAD adopts a collaborative inference strategy: the BAT model is hosted on the cloud server, while the lightweight Q-BAT model runs on resource-constrained edge devices. A Mahalanobis distance-based routing policy enables collaborative anomaly analysis, forwarding hard cases from the edge to the cloud for more accurate prediction. Finally, the Green-LADE method is integrated to assess computational resource efficiency, quantifying the trade-off between resource consumption and detection capability across cloud and edge deployments.
 
 ### Paper ↔ Code Mapping
 
-| Paper component                              | Code location                                                                          |
-| -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Log preprocessing (raw logs → feature matrix) | [ceco_core/data/](ceco_core/data/)                                                     |
-| Enhanced Anomaly Transformer (EM-AT) base learner | [ceco_core/models/](ceco_core/models/)                                             |
-| BAT — cloud bagging ensemble (training)      | [training_pipeline/](training_pipeline/)                                               |
-| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/qbat_export.py](quantization/qbat_export.py)               |
-| Q-BAT edge inference                         | [inference_pipeline/qbat_edge.py](inference_pipeline/qbat_edge.py)                     |
-| Mahalanobis distance-based routing policy    | [inference_pipeline/routing.py](inference_pipeline/routing.py)                         |
-| BAT cloud re-prediction on routed samples    | [inference_pipeline/bat_cloud.py](inference_pipeline/bat_cloud.py)                     |
-| Cloud–edge collaborative orchestration       | [inference_pipeline/run.py](inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
+| Paper component                                            | Code location                                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Log preprocessing (raw logs → feature matrix)              | [ceco_core/data/](ceco_core/data/)                                                                             |
+| Enhanced Anomaly Transformer (EM-AT) base learner          | [ceco_core/models/](ceco_core/models/)                                                                         |
+| BAT — cloud bagging ensemble (training)                    | [training_pipeline/](training_pipeline/)                                                                       |
+| Q-BAT — edge quantized ensemble (A8W4 + ExecuTorch export) | [quantization/qbat_export.py](quantization/qbat_export.py)                                                     |
+| Q-BAT edge inference                                       | [inference_pipeline/qbat_edge.py](inference_pipeline/qbat_edge.py)                                             |
+| Mahalanobis distance-based routing policy                  | [inference_pipeline/routing.py](inference_pipeline/routing.py)                                                 |
+| BAT cloud re-prediction on routed samples                  | [inference_pipeline/bat_cloud.py](inference_pipeline/bat_cloud.py)                                             |
+| Cloud–edge collaborative orchestration                     | [inference_pipeline/run.py](inference_pipeline/run.py), [dashboard/cloud_runner.py](dashboard/cloud_runner.py) |
 
 ---
 
