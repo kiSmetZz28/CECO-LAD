@@ -15,8 +15,8 @@
 
 CECO-LAD detects anomalies in system logs using a hybrid Cloud-Edge collaboration pipeline:
 
-- **Q-BAT edge models** run locally on resource-constrained edge devices.
-- Only the **most uncertain lines** are forwarded to the **BAT cloud ensemble** for more accurate reevaluation.
+- **Edge-side LAD** using Q-BAT model that runs locally on resource-constrained edge devices.
+- Only the **most uncertain lines** are forwarded to the **cloud-side LAD** using BAT model for more accurate reevaluation.
 
 <p align="center">
   <img src="pictures/framework.png" width="700">
