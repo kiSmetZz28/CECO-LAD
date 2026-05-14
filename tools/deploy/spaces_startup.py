@@ -13,6 +13,7 @@ Assets repo: kiSmetZz/ceco-lad-assets  (dataset, public)
   bgl_logs.zip         — BGL processed data files  (~200 MB)
   bgl_raw.zip          — BGL raw log (BGL.log)     (~709 MB)
   hdfs_raw.zip         — HDFS raw log (HDFS.log)   (~1.5 GB)
+  demo.mp4             — Dashboard demo video      (~117 MB)
   (HDFS processed data files are bundled in the repo)
 
 Usage (set automatically via Dockerfile CMD):
@@ -42,6 +43,10 @@ MIN_QBAT      = 3   # 3 .pte files per dataset
 
 # ── executor_runner binary ────────────────────────────────────────────────────
 RUNNER_PATH = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+
+# ── Dashboard demo video ──────────────────────────────────────────────────────
+DEMO_VIDEO_PATH = ROOT / "dashboard" / "static" / "demo.mp4"
+DEMO_VIDEO_MIN_BYTES = 1_000_000   # full file ~117 MB; LFS pointer is ~134 B
 
 # ── OpenStack raw log files ───────────────────────────────────────────────────
 OS_RAW_DIR   = ROOT / "data" / "OpenStack" / "raw"
@@ -94,6 +99,26 @@ def _download_runner() -> bool:
         print("[startup] executor_runner ready.", flush=True)
         return True
     print("[startup] executor_runner download failed — edge inference unavailable.", flush=True)
+    return False
+
+
+# ── Dashboard demo video ──────────────────────────────────────────────────────
+
+def _demo_video_present() -> bool:
+    """The Docker COPY ships the LFS pointer (~134 B); reject anything that tiny."""
+    return DEMO_VIDEO_PATH.is_file() and DEMO_VIDEO_PATH.stat().st_size >= DEMO_VIDEO_MIN_BYTES
+
+
+def _download_demo_video() -> bool:
+    print("[startup] Demo video not found (or only LFS pointer). Downloading from HF (~117 MB)…",
+          flush=True)
+    # Remove the stale pointer first so hf_hub_download writes the real blob.
+    if DEMO_VIDEO_PATH.exists():
+        DEMO_VIDEO_PATH.unlink(missing_ok=True)
+    if _hf_download("demo.mp4", DEMO_VIDEO_PATH) and _demo_video_present():
+        print("[startup] Demo video ready.", flush=True)
+        return True
+    print("[startup] Demo video download failed — Watch Demo button will be broken.", flush=True)
     return False
 
 
@@ -404,6 +429,11 @@ if __name__ == "__main__":
         print("[startup] executor_runner present — skipping download.", flush=True)
     else:
         _download_runner()
+
+    if _demo_video_present():
+        print("[startup] Demo video present — skipping download.", flush=True)
+    else:
+        _download_demo_video()
 
     for _ds in ("bgl", "hdfs", "os"):
         if _qbat_present(_ds):

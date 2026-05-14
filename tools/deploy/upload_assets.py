@@ -42,6 +42,7 @@ BAT_BGL_DIR   = ROOT / "checkpoints" / "bat" / "bgl"
 BAT_HDFS_DIR  = ROOT / "checkpoints" / "bat" / "hdfs"
 QBAT_DIR      = ROOT / "checkpoints" / "qbat"
 RUNNER_PATH   = ROOT / "inference_pipeline" / "executorch" / "cmake-out" / "executor_runner"
+DEMO_VIDEO    = ROOT / "dashboard" / "static" / "demo.mp4"
 
 # ── Pre-computed inference outputs (npy arrays) ───────────────────────────────
 OUTPUT_NP_FILES = [
@@ -214,8 +215,15 @@ def main() -> None:
         upload(api, repo, zip_path, f"qbat/{ds}.zip")
         zip_path.unlink()
 
+    # ── Dashboard demo video ──────────────────────────────────────────────────
+    print("\n── Step 10/11  Dashboard demo video ──")
+    if DEMO_VIDEO.is_file():
+        upload(api, repo, DEMO_VIDEO, "demo.mp4")
+    else:
+        print(f"  SKIP: {DEMO_VIDEO} not found.")
+
     # ── Pre-computed npy outputs (prediction results + per-model arrays) ─────────
-    print("\n── Step 10/10  Pre-computed inference outputs (npy) ──")
+    print("\n── Step 11/11  Pre-computed inference outputs (npy) ──")
     for ds in ("bgl", "hdfs", "os"):
         out_dir = ROOT / "outputs" / ds
         files   = [out_dir / f for f in OUTPUT_NP_FILES if (out_dir / f).exists()]

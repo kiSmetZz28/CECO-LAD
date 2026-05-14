@@ -89,6 +89,10 @@ api.upload_folder(
     repo_id=repo_id,
     repo_type="space",
     folder_path=str(root),
+    # Delete any prior manual uploads of the demo video — the real blob lives
+    # in the assets dataset repo and is fetched at container startup. Leaving a
+    # copy here just bakes a stale LFS pointer (or stale file) into the build.
+    delete_patterns=["dashboard/static/demo.mp4"],
     ignore_patterns=[
         "README.md",             # already uploaded above with HF front matter
         # BAT checkpoints (3.5 GB) — downloaded at runtime from HF dataset repo
@@ -99,6 +103,10 @@ api.upload_folder(
         "inference_pipeline/executorch/**",
         # Local database — rebuilt from scratch on startup
         "dashboard/ceco_lad.db",
+        # Demo video (~117 MB) — downloaded at runtime from HF assets dataset repo.
+        # If shipped via the Space repo it ends up as an LFS pointer (~134 B)
+        # inside the Docker build context, which breaks playback.
+        "dashboard/static/demo.mp4",
         # All output npy arrays are excluded from the Space repo to stay within
         # the 1 GB limit. They are all downloaded at container startup from the
         # HF assets dataset repo via tools/deploy/spaces_startup.py.
